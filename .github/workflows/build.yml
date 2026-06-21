@@ -1,0 +1,38 @@
+name: Build Windows EXE
+
+# این اسکریپت هر بار که روی شاخه main پوش کنی اجرا میشه
+# و همچنین قابلیت اجرای دستی هم داره
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    # حتماً باید روی محیط ویندوز بیلد بشه تا خروجی exe بده
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller
+        pip install -r requirements.txt
+        
+    - name: Build EXE with PyInstaller
+      run: |
+        pyinstaller --onefile --clean deploy.py
+        
+    - name: Upload EXE Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Zeus-Deployer-EXE
+        path: dist/deploy.exe
