@@ -3224,9 +3224,9 @@ const HTML_TEMPLATES = {
                 window.location.reload();
             }
         }
-const CURRENT_VERSION = '1.1.1';
+const CURRENT_VERSION = '1.2.2';
 
-        async function checkForUpdates(isManual = false) {
+		async function checkForUpdates(isManual = false) {
             try {
                 if (isManual) {
                     document.getElementById('update-toggle').classList.add('animate-pulse');
@@ -3236,7 +3236,7 @@ const CURRENT_VERSION = '1.1.1';
                 if (!res.ok) throw new Error('Network response was not ok');
                 const text = await res.text();
                 
-                const match = text.match(/ZEUS Panel[\s\S]*?>v?(\d+\.\d+\.\d+)<\/span>/i);
+                const match = text.match(/const\\s+CURRENT_VERSION\\s*=\\s*['"](\\d+\\.\\d+\\.\\d+)['"]/i);
                 const latestVersion = match ? match[1] : null;
 
                 if (isManual) {
@@ -3246,7 +3246,7 @@ const CURRENT_VERSION = '1.1.1';
                 if (latestVersion && latestVersion !== CURRENT_VERSION) {
                     document.getElementById('update-badge').classList.remove('hidden');
                     if (isManual) {
-                        if (confirm('نسخه جدید (v' + latestVersion + ') در دسترس است! آیا می‌خواهید پنل را آپدیت کنید؟ (اطلاعات کاربران پاک نمی‌شود)')) {
+                        if (confirm('نسخه جدید (v' + latestVersion + ') در دسترس است! آیا می خواهید پنل را آپدیت کنید؟')) {
                             applyUpdate();
                         }
                     }
@@ -3258,7 +3258,7 @@ const CURRENT_VERSION = '1.1.1';
             } catch (err) {
                 if (isManual) {
                     document.getElementById('update-toggle').classList.remove('animate-pulse');
-                    alert('خطا در بررسی آپدیت از گیت‌هاب.');
+                    alert('خطا در بررسی آپدیت از گیت هاب.');
                 }
             }
         }
