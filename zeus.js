@@ -2206,7 +2206,7 @@ const HTML_TEMPLATES = {
         </div>
     </div>
 
-    <div class="bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-2xl p-5 shadow-sm flex flex-col justify-between hover:shadow-md hover:border-orange-400 dark:hover:border-orange-500/50 transition duration-300 relative overflow-hidden group">
+    <div id="card-cf-requests" class="bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-2xl p-5 shadow-sm flex flex-col justify-between hover:shadow-md hover:border-orange-400 dark:hover:border-orange-500/50 transition duration-300 relative overflow-hidden group">
         <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-orange-500/10 rounded-full blur-xl group-hover:scale-150 transition duration-500"></div>
         
         <div class="flex items-center justify-between relative z-10 mb-2">
@@ -2737,17 +2737,25 @@ const HTML_TEMPLATES = {
                 document.getElementById('stat-active-users').innerText = activeUsersCount;
                 document.getElementById('stat-total-usage').innerText = totalGbUsage < 1 ? (totalGbUsage * 1024).toFixed(0) + ' MB' : totalGbUsage.toFixed(2) + ' GB';
                 const cfRequests = data.cfRequestsToday || 0;
-				if (cfRequests >= 90000) {
-    				const today = new Date().toISOString().split('T')[0];
-    				if (localStorage.getItem('zeus_usage_warned_date') !== today) {
-        				const usageModal = document.getElementById('usage-warning-modal');
-        				const usageCard = usageModal.querySelector('div');
-        				usageModal.classList.remove('opacity-0', 'pointer-events-none');
-        				usageModal.classList.add('opacity-100', 'pointer-events-auto');
-        				usageCard.classList.remove('opacity-0', 'scale-95');
-        				usageCard.classList.add('opacity-100', 'scale-100');
-    				}
-				}
+                const reqCard = document.getElementById('card-cf-requests');
+                if (cfRequests >= 90000) {
+                    if (reqCard) {
+                        reqCard.className = "bg-red-50 dark:bg-red-950/20 border border-red-500 rounded-2xl p-5 shadow-[0_0_15px_rgba(239,68,68,0.4)] flex flex-col justify-between hover:shadow-md transition duration-300 relative overflow-hidden group animate-pulse";
+                    }
+                    const today = new Date().toISOString().split('T')[0];
+                    if (localStorage.getItem('zeus_usage_warned_date') !== today) {
+                        const usageModal = document.getElementById('usage-warning-modal');
+                        const usageCard = usageModal.querySelector('div');
+                        usageModal.classList.remove('opacity-0', 'pointer-events-none');
+                        usageModal.classList.add('opacity-100', 'pointer-events-auto');
+                        usageCard.classList.remove('opacity-0', 'scale-95');
+                        usageCard.classList.add('opacity-100', 'scale-100');
+                    }
+                } else {
+                    if (reqCard) {
+                        reqCard.className = "bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-2xl p-5 shadow-sm flex flex-col justify-between hover:shadow-md hover:border-orange-400 dark:hover:border-orange-500/50 transition duration-300 relative overflow-hidden group";
+                    }
+                }
                 const cfTotal = data.cfRequestsTotal || 0;
                 document.getElementById('stat-cf-requests').innerText = cfRequests >= 1000 ? (cfRequests / 1000).toFixed(1) + 'k' : cfRequests;
                 document.getElementById('stat-cf-total').innerText = cfTotal >= 1000000 ? (cfTotal / 1000000).toFixed(2) + 'M' : (cfTotal >= 1000 ? (cfTotal / 1000).toFixed(1) + 'k' : cfTotal);
@@ -3607,7 +3615,7 @@ function closeUsageWarning() {
                 window.location.reload();
             }
         }
-const CURRENT_VERSION = '1.3.7';
+const CURRENT_VERSION = '1.3.8';
 const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
 
 		async function checkForUpdates(isManual = false) {
@@ -3826,7 +3834,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-900 dark:bg-amoled-bg dark:text-zinc-100 min-h-screen flex flex-col items-center justify-center p-4">
+<body class="bg-gray-50 text-gray-900 dark:bg-amoled-bg dark:text-zinc-100 min-h-screen flex flex-col items-center py-12 px-4">
     <div class="w-full max-w-xl glass rounded-3xl shadow-2xl p-6 md:p-8 relative overflow-hidden">
         <!-- Background Orbs -->
         <div class="absolute -left-12 -top-12 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
@@ -3891,6 +3899,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 دریافت کانفیگ و اشتراک‌ها
             </h2>
             <div class="space-y-3">
+                <button onclick="copyTextSub()" class="w-full flex justify-between items-center px-4 py-3 bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border hover:border-indigo-500 dark:hover:border-indigo-500 rounded-xl text-xs font-medium transition shadow-sm">
+                    <span class="flex items-center gap-2">⛓️ کپی لینک ساب‌اسکریپشن متنی</span>
+                    <span class="text-indigo-500">کپی</span>
+                </button>
                 <button onclick="copyVlessConfig()" class="w-full flex justify-between items-center px-4 py-3 bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border hover:border-blue-500 dark:hover:border-blue-500 rounded-xl text-xs font-medium transition shadow-sm">
                     <span class="flex items-center gap-2">🚀 کپی کانفیگ VLESS (مستقیم)</span>
                     <span class="text-blue-500">کپی</span>
@@ -3899,12 +3911,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span class="flex items-center gap-2">🌐 کپی لینک ساب‌اسکریپشن JSON (نوین)</span>
                     <span class="text-purple-500">کپی</span>
                 </button>
-                <button onclick="copyTextSub()" class="w-full flex justify-between items-center px-4 py-3 bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border hover:border-indigo-500 dark:hover:border-indigo-500 rounded-xl text-xs font-medium transition shadow-sm">
-                    <span class="flex items-center gap-2">⛓️ کپی لینک ساب‌اسکریپشن متنی</span>
-                    <span class="text-indigo-500">کپی</span>
-                </button>
                 <button onclick="showQR()" class="w-full flex justify-between items-center px-4 py-3 bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border hover:border-emerald-500 dark:hover:border-emerald-500 rounded-xl text-xs font-medium transition shadow-sm">
-                    <span class="flex items-center gap-2">📱 نمایش کد QR کانفیگ VLESS</span>
+                    <span class="flex items-center gap-2">📱 نمایش کد QR لینک ساب</span>
                     <span class="text-emerald-500">مشاهده</span>
                 </button>
             </div>
@@ -3923,7 +3931,7 @@ document.addEventListener('DOMContentLoaded', () => {
     <!-- QR Modal -->
     <div id="qr-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm opacity-0 pointer-events-none transition-all duration-300 ease-out">
         <div class="w-full max-w-sm bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-2xl shadow-xl overflow-hidden p-6 text-center transition-all transform duration-300 opacity-0 scale-95 ease-out">
-            <h3 class="font-bold text-gray-900 dark:text-zinc-100 mb-4">اسکن کد QR کانفیگ VLESS</h3>
+            <h3 class="font-bold text-gray-900 dark:text-zinc-100 mb-4">اسکن کد QR لینک ساب</h3>
             <div class="bg-white p-3 rounded-xl inline-block mb-4 border border-gray-100">
                 <div id="qrcode-box" class="flex justify-center items-center w-48 h-48 mx-auto"></div>
             </div>
@@ -4001,14 +4009,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         function showQR() {
-            toggleQRModal(true, getVlessLink());
+            const link = window.location.protocol + '//' + getHost() + '/sub/' + encodeURIComponent(window.statusUser.username);
+            toggleQRModal(true, link);
         }
 
         document.addEventListener('DOMContentLoaded', () => {
             const u = window.statusUser;
             if (!u) return;
 
-            document.getElementById('display-username').innerText = '@' + u.username;
+            document.getElementById('display-username').innerText = u.username;
 
             // Compute volume
             const usedGb = u.used_gb || 0;
