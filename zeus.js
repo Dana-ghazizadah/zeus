@@ -38,7 +38,7 @@ export default {
 		if (url.pathname.startsWith("/status/")) {
 			return await Router.handleUserStatus(url, env);
 		}
-		return new Response(HTML_TEMPLATES.nginx, {
+		nse(HTML_TEMPLATES.nginx, {
 			headers: { "Content-Type": "text/html; charset=utf-8" },
 		});
 	},
@@ -198,7 +198,7 @@ const Router = {
 			}
 			try {
 				const cfRes = await fetch("https://api.cloudflare.com/client/v4/user/tokens/verify", {
-					headers: { "Authorization": "Bearer " + api_token }
+					headers: { Authorization: "Bearer " + api_token },
 				});
 				const cfData = await cfRes.json();
 				if (!cfRes.ok || !cfData.success) {
@@ -213,13 +213,13 @@ const Router = {
 					const parts = host.split(".");
 					const targetSubdomain = parts[parts.length - 3];
 					const accountsRes = await fetch("https://api.cloudflare.com/client/v4/accounts", {
-						headers: { "Authorization": "Bearer " + api_token }
+						headers: { Authorization: "Bearer " + api_token },
 					});
 					const accountsData = await accountsRes.json();
 					if (accountsData.success && accountsData.result) {
 						for (const acc of accountsData.result) {
 							const subRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${acc.id}/workers/subdomain`, {
-								headers: { "Authorization": "Bearer " + api_token }
+								headers: { Authorization: "Bearer " + api_token },
 							});
 							const subData = await subRes.json();
 							if (subData.success && subData.result && subData.result.subdomain === targetSubdomain) {
@@ -230,7 +230,7 @@ const Router = {
 					}
 				} else {
 					const zonesRes = await fetch("https://api.cloudflare.com/client/v4/zones", {
-						headers: { "Authorization": "Bearer " + api_token }
+						headers: { Authorization: "Bearer " + api_token },
 					});
 					const zonesData = await zonesRes.json();
 					if (zonesData.success && zonesData.result) {
@@ -279,7 +279,7 @@ const Router = {
 			try {
 				if (!currentAccountId) {
 					const accRes = await fetch("https://api.cloudflare.com/client/v4/accounts", {
-						headers: { "Authorization": "Bearer " + currentToken }
+						headers: { Authorization: "Bearer " + currentToken },
 					});
 					const accData = await accRes.json();
 					if (!accData.success || accData.result.length === 0) throw new Error("توکن نامعتبر است یا اکانتی یافت نشد.");
@@ -314,10 +314,10 @@ const Router = {
 					}
 				}
 
-				if (!newBindings.some(b => b.name === "CF_API_TOKEN")) {
+				if (!newBindings.some((b) => b.name === "CF_API_TOKEN")) {
 					newBindings.push({ type: "secret_text", name: "CF_API_TOKEN", text: currentToken });
 				}
-				if (!newBindings.some(b => b.name === "CF_ACCOUNT_ID")) {
+				if (!newBindings.some((b) => b.name === "CF_ACCOUNT_ID")) {
 					newBindings.push({ type: "secret_text", name: "CF_ACCOUNT_ID", text: currentAccountId });
 				}
 
@@ -450,24 +450,18 @@ const Router = {
 		}
 		if (url.pathname === "/api/proxy-ip") {
 			if (request.method === "POST") {
-				const { proxy_ip, iata, frag_len, frag_int } = await request.json();
+				const { proxy_ip, iata } = await request.json();
 				if (proxy_ip) await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('proxy_ip', ?)").bind(proxy_ip).run();
 				if (iata !== undefined) await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('proxy_location_iata', ?)").bind(iata).run();
-				if (frag_len !== undefined) await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('frag_len', ?)").bind(frag_len).run();
-				if (frag_int !== undefined) await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('frag_int', ?)").bind(frag_int).run();
 				return new Response(JSON.stringify({ success: true }), { headers: { "Content-Type": "application/json" } });
 			}
 			if (request.method === "GET") {
 				const rowIp = await env.DB.prepare("SELECT value FROM settings WHERE key = 'proxy_ip'").first();
 				const rowIata = await env.DB.prepare("SELECT value FROM settings WHERE key = 'proxy_location_iata'").first();
-				const rowLen = await env.DB.prepare("SELECT value FROM settings WHERE key = 'frag_len'").first();
-				const rowInt = await env.DB.prepare("SELECT value FROM settings WHERE key = 'frag_int'").first();
 				return new Response(
 					JSON.stringify({
 						proxy_ip: rowIp ? rowIp.value : "proxyip.cmliussss.net",
 						iata: rowIata ? rowIata.value : "",
-						frag_len: rowLen ? rowLen.value : "20-30",
-						frag_int: rowInt ? rowInt.value : "1-2",
 					}),
 					{ headers: { "Content-Type": "application/json" } },
 				);
@@ -495,7 +489,7 @@ const Router = {
 						}
 						return new Response(JSON.stringify({ success: true }), { headers: { "Content-Type": "application/json" } });
 					} else {
-						const { username: new_username, limit_gb, expiry_days, limit_req, ips, tls, port, fingerprint, ip_limit, block_porn, block_ads } = body;
+						const { username: new_username, limit_gb, expiry_days, limit_req, ips, tls, port, fingerprint, ip_limit, block_porn, block_ads, frag_len, frag_int } = body;
 						if (new_username && new_username !== username) {
 							const existing = await env.DB.prepare("SELECT id FROM users WHERE username = ?").bind(new_username).first();
 							if (existing) {
@@ -518,8 +512,8 @@ const Router = {
 								GLOBAL_LAST_ACTIVE_WRITE.delete(username);
 							}
 						}
-						await env.DB.prepare("UPDATE users SET username = ?, limit_gb = ?, expiry_days = ?, limit_req = ?, ips = ?, tls = ?, port = ?, fingerprint = ?, max_connections = ?, ip_limit = ?, block_porn = ?, block_ads = ? WHERE username = ?")
-							.bind(new_username || username, limit_gb ? parseFloat(limit_gb) : null, expiry_days ? parseInt(expiry_days) : null, limit_req ? parseInt(limit_req) : null, ips || null, tls, port, fingerprint || "chrome", ip_limit ? parseInt(ip_limit) : null, ip_limit ? parseInt(ip_limit) : null, block_porn ? 1 : 0, block_ads ? 1 : 0, username)
+						await env.DB.prepare("UPDATE users SET username = ?, limit_gb = ?, expiry_days = ?, limit_req = ?, ips = ?, tls = ?, port = ?, fingerprint = ?, max_connections = ?, ip_limit = ?, block_porn = ?, block_ads = ?, frag_len = ?, frag_int = ? WHERE username = ?")
+							.bind(new_username || username, limit_gb ? parseFloat(limit_gb) : null, expiry_days ? parseInt(expiry_days) : null, limit_req ? parseInt(limit_req) : null, ips || null, tls, port, fingerprint || "chrome", ip_limit ? parseInt(ip_limit) : null, ip_limit ? parseInt(ip_limit) : null, block_porn ? 1 : 0, block_ads ? 1 : 0, frag_len || "20-30", frag_int || "1-2", username)
 							.run();
 						return new Response(JSON.stringify({ success: true }), { headers: { "Content-Type": "application/json" } });
 					}
@@ -580,7 +574,7 @@ const Router = {
 					);
 				}
 				if (request.method === "POST") {
-					const { username, uuid, limit_gb, expiry_days, limit_req, ips, tls, port, fingerprint, ip_limit, used_gb, used_req, created_at, is_active } = await request.json();
+					const { username, uuid, limit_gb, expiry_days, limit_req, ips, tls, port, fingerprint, ip_limit, used_gb, used_req, created_at, is_active, block_porn, block_ads, frag_len, frag_int } = await request.json();
 					if (!username) {
 						return new Response(JSON.stringify({ error: "نام کاربری اجباری است" }), { status: 400, headers: { "Content-Type": "application/json" } });
 					}
@@ -593,8 +587,8 @@ const Router = {
 					const parsedIsActive = parseInt(is_active);
 					const finalIsActive = !isNaN(parsedIsActive) ? parsedIsActive : 1;
 					try {
-						await env.DB.prepare("INSERT INTO users (username, uuid, limit_gb, expiry_days, limit_req, ips, connection_type, tls, port, fingerprint, max_connections, ip_limit, used_gb, used_req, created_at, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-							.bind(username, finalUuid, limit_gb ? parseFloat(limit_gb) : null, expiry_days ? parseInt(expiry_days) : null, limit_req ? parseInt(limit_req) : null, ips || null, atob("dmxlc3M="), tls, port, fingerprint || "chrome", ip_limit ? parseInt(ip_limit) : null, ip_limit ? parseInt(ip_limit) : null, finalUsedGb, finalUsedReq, finalCreatedAt, finalIsActive)
+						await env.DB.prepare("INSERT INTO users (username, uuid, limit_gb, expiry_days, limit_req, ips, connection_type, tls, port, fingerprint, max_connections, ip_limit, used_gb, used_req, created_at, is_active, block_porn, block_ads, frag_len, frag_int) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+							.bind(username, finalUuid, limit_gb ? parseFloat(limit_gb) : null, expiry_days ? parseInt(expiry_days) : null, limit_req ? parseInt(limit_req) : null, ips || null, atob("dmxlc3M="), tls, port, fingerprint || "chrome", ip_limit ? parseInt(ip_limit) : null, ip_limit ? parseInt(ip_limit) : null, finalUsedGb, finalUsedReq, finalCreatedAt, finalIsActive, block_porn ? 1 : 0, block_ads ? 1 : 0, frag_len || "20-30", frag_int || "1-2")
 							.run();
 						return new Response(JSON.stringify({ success: true }), { headers: { "Content-Type": "application/json" } });
 					} catch (err) {
@@ -670,7 +664,13 @@ const DbService = {
 		try {
 			await db.prepare("ALTER TABLE users ADD COLUMN block_ads INTEGER DEFAULT 0").run();
 		} catch (e) {}
-			schemaEnsured = true;
+		try {
+			await db.prepare("ALTER TABLE users ADD COLUMN frag_len TEXT DEFAULT '20-30'").run();
+		} catch (e) {}
+		try {
+			await db.prepare("ALTER TABLE users ADD COLUMN frag_int TEXT DEFAULT '1-2'").run();
+		} catch (e) {}
+		schemaEnsured = true;
 	},
 	async getPanelPassword(db) {
 		if (cachedPanelPassword !== null) return cachedPanelPassword;
@@ -709,7 +709,7 @@ function getActiveIpCount(activeIpsJson) {
 		const now = Date.now();
 		let count = 0;
 		for (const [ip, data] of Object.entries(activeIps)) {
-			const lastSeen = (data && typeof data === 'object') ? data.timestamp : data;
+			const lastSeen = data && typeof data === "object" ? data.timestamp : data;
 			if (now - lastSeen <= 30000) {
 				count++;
 			}
@@ -762,8 +762,9 @@ const SubscriptionService = {
 			ports.forEach((portStr) => {
 				const isTlsPort = ["443", "2053", "2083", "2087", "2096", "8443"].includes(portStr);
 				const tlsVal = isTlsPort ? "tls" : "none";
+				const userFrag = user.frag_len && user.frag_int ? "&fragment=" + user.frag_len + "," + user.frag_int : "";
 				const remark = user.username + " | " + ip + " | " + portStr;
-				links.push(atob("dmxlc3M6Ly8=") + user.uuid + "@" + ip + ":" + portStr + "?path=%2FIn_Panel_Rayeghan_Ast_Va_Gheyre_Ghabele_Foroosh&security=" + tlsVal + "&encryption=none&insecure=0&host=" + host + "&fp=" + fp + "&type=ws&allowInsecure=0&sni=" + host + "#" + encodeURIComponent(remark));
+				links.push(atob("dmxlc3M6Ly8=") + user.uuid + "@" + ip + ":" + portStr + "?path=%2FIn_Panel_Rayeghan_Ast_Va_Gheyre_Ghabele_Foroosh&security=" + tlsVal + "&encryption=none&insecure=0&host=" + host + "&fp=" + fp + "&type=ws&allowInsecure=0&sni=" + host + userFrag + "#" + encodeURIComponent(remark));
 			});
 		});
 		const noise = ["# System Update Feed: OK", "# Sync Code: " + Math.random().toString(36).slice(2, 10), "# Version: 2.10.1", "# Description: Secure Node Configurations", ""].join("\n");
@@ -811,7 +812,7 @@ async function flushExpiredTraffic(env) {
 	}
 }
 async function handleVLESS(env, storedData = null, ctx = null, request = null) {
-	const clientIP = request ? (request.headers.get("CF-Connecting-IP") || "unknown") : "unknown";
+	const clientIP = request ? request.headers.get("CF-Connecting-IP") || "unknown" : "unknown";
 	const socketPair = new WebSocketPair();
 	const [clientSock, serverSock] = Object.values(socketPair);
 	serverSock.accept();
@@ -876,9 +877,9 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 					const user = await env.DB.prepare("SELECT active_ips FROM users WHERE uuid = ?").bind(validUUID).first();
 					if (user) {
 						console.log(`[setOffline Task] DB active_ips for ${uname}: ${user.active_ips}`);
-						let activeIps = JSON.parse(user.active_ips || '{}');
+						let activeIps = JSON.parse(user.active_ips || "{}");
 						if (activeIps[clientIP]) {
-							if (typeof activeIps[clientIP] === 'object') {
+							if (typeof activeIps[clientIP] === "object") {
 								activeIps[clientIP].count = (activeIps[clientIP].count || 1) - 1;
 								if (activeIps[clientIP].count <= 0) {
 									delete activeIps[clientIP];
@@ -886,8 +887,7 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 							} else {
 								delete activeIps[clientIP];
 							}
-							await env.DB.prepare("UPDATE users SET active_ips = ? WHERE uuid = ?")
-								.bind(JSON.stringify(activeIps), validUUID).run();
+							await env.DB.prepare("UPDATE users SET active_ips = ? WHERE uuid = ?").bind(JSON.stringify(activeIps), validUUID).run();
 							console.log(`[setOffline Task] Updated active_ips in DB to: ${JSON.stringify(activeIps)}`);
 						} else {
 							console.log(`[setOffline Task] IP ${clientIP} not found in user's active_ips`);
@@ -970,12 +970,12 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 						if (!isExpired && clientIP && clientIP !== "unknown") {
 							let activeIps = {};
 							try {
-								activeIps = JSON.parse(user.active_ips || '{}');
+								activeIps = JSON.parse(user.active_ips || "{}");
 							} catch (e) {}
 							const nowTime = Date.now();
 							let hasChanges = false;
 							for (const [ip, data] of Object.entries(activeIps)) {
-								const lastSeen = (data && typeof data === 'object') ? data.timestamp : data;
+								const lastSeen = data && typeof data === "object" ? data.timestamp : data;
 								if (nowTime - lastSeen > 30000) {
 									delete activeIps[ip];
 									hasChanges = true;
@@ -986,8 +986,8 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 								console.log(`[Heartbeat] IP ${clientIP} expired from active_ips due to inactivity.`);
 							} else {
 								const sortedIps = Object.keys(activeIps).sort((a, b) => {
-									const tA = (activeIps[a] && typeof activeIps[a] === 'object') ? activeIps[a].timestamp : activeIps[a];
-									const tB = (activeIps[b] && typeof activeIps[b] === 'object') ? activeIps[b].timestamp : activeIps[b];
+									const tA = activeIps[a] && typeof activeIps[a] === "object" ? activeIps[a].timestamp : activeIps[a];
+									const tB = activeIps[b] && typeof activeIps[b] === "object" ? activeIps[b].timestamp : activeIps[b];
 									return tB - tA;
 								});
 								const clientIpIndex = sortedIps.indexOf(clientIP);
@@ -1133,32 +1133,32 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 			}
 			userIpLimit = user.ip_limit;
 			if (user.block_porn === 1 && user.block_ads === 1) {
-   			 targetDns = "94.140.14.15";
-   			 targetDoh = "https://family.adguard-dns.com/dns-query";
+				targetDns = "94.140.14.15";
+				targetDoh = "https://family.adguard-dns.com/dns-query";
 			} else if (user.block_porn === 1) {
-   			 targetDns = "1.1.1.3";
-   			 targetDoh = "https://family.cloudflare-dns.com/dns-query";
+				targetDns = "1.1.1.3";
+				targetDoh = "https://family.cloudflare-dns.com/dns-query";
 			} else if (user.block_ads === 1) {
-  			  targetDns = "94.140.14.14";
-   			 targetDoh = "https://dns.adguard-dns.com/dns-query";
+				targetDns = "94.140.14.14";
+				targetDoh = "https://dns.adguard-dns.com/dns-query";
 			}
 			if (clientIP && clientIP !== "unknown") {
 				console.log(`[VLESS Handshake] User: ${user.username}, clientIP: ${clientIP}, active_ips in DB: ${user.active_ips}`);
 				let activeIps = {};
 				try {
-					activeIps = JSON.parse(user.active_ips || '{}');
+					activeIps = JSON.parse(user.active_ips || "{}");
 				} catch (e) {}
 				const now = Date.now();
 				for (const [ip, data] of Object.entries(activeIps)) {
-					const lastSeen = (data && typeof data === 'object') ? data.timestamp : data;
+					const lastSeen = data && typeof data === "object" ? data.timestamp : data;
 					if (now - lastSeen > 30000) {
 						delete activeIps[ip];
 					}
 				}
 				if (!activeIps[clientIP]) {
 					const sortedIps = Object.keys(activeIps).sort((a, b) => {
-						const tA = (activeIps[a] && typeof activeIps[a] === 'object') ? activeIps[a].timestamp : activeIps[a];
-						const tB = (activeIps[b] && typeof activeIps[b] === 'object') ? activeIps[b].timestamp : activeIps[b];
+						const tA = activeIps[a] && typeof activeIps[a] === "object" ? activeIps[a].timestamp : activeIps[a];
+						const tB = activeIps[b] && typeof activeIps[b] === "object" ? activeIps[b].timestamp : activeIps[b];
 						return tB - tA;
 					});
 					console.log(`[VLESS Handshake] Non-expired active IPs: ${JSON.stringify(activeIps)}, count: ${sortedIps.length}, limit: ${user.ip_limit}`);
@@ -1169,7 +1169,7 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 					}
 					activeIps[clientIP] = { timestamp: now, count: 1 };
 				} else {
-					if (typeof activeIps[clientIP] === 'object') {
+					if (typeof activeIps[clientIP] === "object") {
 						activeIps[clientIP].timestamp = now;
 						activeIps[clientIP].count = (activeIps[clientIP].count || 0) + 1;
 					} else {
@@ -1178,8 +1178,7 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 					console.log(`[VLESS Handshake] Reconnected from same IP: ${clientIP}, count: ${activeIps[clientIP].count}`);
 				}
 				try {
-					await env.DB.prepare("UPDATE users SET active_ips = ?, last_active = ? WHERE uuid = ?")
-						.bind(JSON.stringify(activeIps), now, reqUUID).run();
+					await env.DB.prepare("UPDATE users SET active_ips = ?, last_active = ? WHERE uuid = ?").bind(JSON.stringify(activeIps), now, reqUUID).run();
 					console.log(`[VLESS Handshake] Successfully updated active_ips to: ${JSON.stringify(activeIps)}`);
 				} catch (e) {
 					console.error(`[VLESS Handshake] DB Update Error: ${e.message}`);
@@ -1396,7 +1395,7 @@ function closeSocketQuietly(socket) {
 	} catch (e) {}
 }
 async function dohQuery(domain, recordType, targetDoh = DOH_RESOLVER) {
-    const cacheKey = `${domain}:${recordType}:${targetDoh}`;
+	const cacheKey = `${domain}:${recordType}:${targetDoh}`;
 	if (DNS_CACHE.has(cacheKey)) {
 		const cached = DNS_CACHE.get(cacheKey);
 		if (Date.now() < cached.expires) return cached.data;
@@ -1839,8 +1838,8 @@ async function connectStreams(remoteSocket, webSocket, headerData, retryFunc, on
 	if (!hasData && retryFunc) await retryFunc();
 }
 async function buildRaceCandidates(address, port, targetDoh) {
-    if (!PRELOAD_RACE_DIAL || isIPHostname(address)) return null;
-    const [aRecords, aaaaRecords] = await Promise.all([dohQuery(address, "A", targetDoh), dohQuery(address, "AAAA", targetDoh)]);
+	if (!PRELOAD_RACE_DIAL || isIPHostname(address)) return null;
+	const [aRecords, aaaaRecords] = await Promise.all([dohQuery(address, "A", targetDoh), dohQuery(address, "AAAA", targetDoh)]);
 	const ipv4List = [
 		...new Set(
 			aRecords.flatMap((r) => {
@@ -1861,7 +1860,7 @@ async function buildRaceCandidates(address, port, targetDoh) {
 	return ipList.map((hostname, attempt) => ({ hostname, port, attempt, resolvedFrom: address }));
 }
 async function connectDirect(address, port, initialData = null, targetDoh = "https://cloudflare-dns.com/dns-query") {
-    const raceCandidates = await buildRaceCandidates(address, port, targetDoh);
+	const raceCandidates = await buildRaceCandidates(address, port, targetDoh);
 	const candidates = raceCandidates || Array.from({ length: TCP_CONCURRENCY }, () => ({ hostname: address, port }));
 	const openConnection = async (host, prt) => {
 		const socket = connect({ hostname: host, port: prt });
@@ -1904,9 +1903,9 @@ async function connectDirect(address, port, initialData = null, targetDoh = "htt
 	}
 }
 async function forwardVlessUDP(udpChunk, webSocket, respHeader, onBytes, dnsServer = "8.8.4.4") {
-    const requestData = convertToUint8Array(udpChunk);
-    try {
-        const tcpSocket = connect({ hostname: dnsServer, port: 53 });
+	const requestData = convertToUint8Array(udpChunk);
+	try {
+		const tcpSocket = connect({ hostname: dnsServer, port: 53 });
 		let vlessHeader = respHeader;
 		const writer = tcpSocket.writable.getWriter();
 		await writer.write(requestData);
@@ -2070,7 +2069,7 @@ const HTML_TEMPLATES = {
 </body>
 </html>`,
 
-login: `<!DOCTYPE html>
+	login: `<!DOCTYPE html>
 <html lang="fa" dir="rtl" class="dark">
 <head>
     <meta charset="UTF-8">
@@ -2596,6 +2595,16 @@ login: `<!DOCTYPE html>
                         </div>
                     </div>
                 </div>
+<div class="grid grid-cols-2 gap-4 mt-4">
+    <div>
+        <label class="block text-[10px] sm:text-xs font-bold text-gray-500 dark:text-zinc-400 mb-2 uppercase tracking-wider">Fragment Length</label>
+        <input type="text" id="input-frag-len" placeholder="20-30" value="20-30" dir="ltr" class="w-full px-3 py-2.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm font-mono text-center text-gray-800 dark:text-zinc-100 transition">
+    </div>
+    <div>
+        <label class="block text-[10px] sm:text-xs font-bold text-gray-500 dark:text-zinc-400 mb-2 uppercase tracking-wider">Fragment Interval</label>
+        <input type="text" id="input-frag-int" placeholder="1-2" value="1-2" dir="ltr" class="w-full px-3 py-2.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm font-mono text-center text-gray-800 dark:text-zinc-100 transition">
+    </div>
+</div>
                 <div class="pt-2 border-t border-gray-100 dark:border-zinc-900">
                     <label class="block text-xs font-bold text-gray-500 dark:text-zinc-400 mb-3 uppercase tracking-wider">پورت‌های اتصال (انتخاب چندگانه)</label>
                     <div class="space-y-4">
@@ -2721,16 +2730,7 @@ login: `<!DOCTYPE html>
                         </div>
                     </div>
                 </div>
-                <div class="grid grid-cols-2 gap-4 pt-2 border-t border-gray-100 dark:border-zinc-800">
-                    <div>
-                        <label class="block text-sm font-medium mb-1.5 text-gray-700 dark:text-zinc-300">Fragment Length</label>
-                        <input type="text" id="frag-length" placeholder="20-30" class="w-full px-3 py-2.5 bg-white dark:bg-amoled-input border border-gray-300 dark:border-amoled-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-center font-mono" dir="ltr">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium mb-1.5 text-gray-700 dark:text-zinc-300">Fragment Interval</label>
-                        <input type="text" id="frag-interval" placeholder="1-2" class="w-full px-3 py-2.5 bg-white dark:bg-amoled-input border border-gray-300 dark:border-amoled-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-center font-mono" dir="ltr">
-                    </div>
-                </div>
+               
                 <div class="pt-4 border-t border-gray-100 dark:border-zinc-800">
                     <h4 class="text-sm font-bold mb-3 text-gray-800 dark:text-zinc-200">🔒 تغییر رمز عبور مدیریت</h4>
                     <div class="space-y-3">
@@ -2925,6 +2925,22 @@ login: `<!DOCTYPE html>
                             <input type="number" id="bulk-input-ip-limit" min="0" placeholder="بدون تغییر" class="w-full px-3 py-2 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm font-semibold text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition">
                         </div>
                     </div>
+					<div class="flex items-center gap-3 border border-gray-100 dark:border-zinc-900 p-3 rounded-xl bg-gray-50/20 dark:bg-zinc-900/10">
+						<label class="relative inline-flex items-center cursor-pointer select-none">
+							<input type="checkbox" id="bulk-apply-frag" class="sr-only peer">
+							<div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+						</label>
+						<div class="flex-1 grid grid-cols-2 gap-2">
+							<div>
+								<label class="block text-[10px] font-bold text-gray-500 dark:text-zinc-400 mb-1 uppercase tracking-wider">Fragment Length</label>
+								<input type="text" id="bulk-input-frag-len" placeholder="20-30" class="w-full px-2 py-1.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-mono text-center text-gray-800 dark:text-zinc-100 transition" dir="ltr">
+							</div>
+							<div>
+								<label class="block text-[10px] font-bold text-gray-500 dark:text-zinc-400 mb-1 uppercase tracking-wider">Fragment Interval</label>
+								<input type="text" id="bulk-input-frag-int" placeholder="1-2" class="w-full px-2 py-1.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-mono text-center text-gray-800 dark:text-zinc-100 transition" dir="ltr">
+							</div>
+						</div>
+					</div>
                     <div class="flex items-center gap-3 border border-gray-100 dark:border-zinc-900 p-3 rounded-xl bg-gray-50/20 dark:bg-zinc-900/10">
                         <label class="relative inline-flex items-center cursor-pointer select-none">
                             <input type="checkbox" id="bulk-apply-fingerprint" class="sr-only peer">
@@ -3248,7 +3264,10 @@ login: `<!DOCTYPE html>
             const tlsValue = checkedPorts.some(p => tlsPorts.includes(p)) ? 'on' : 'off';
             const applyIps = document.getElementById('bulk-apply-ips').checked;
             const ipsValue = document.getElementById('bulk-input-ips').value;
-            if (!applyLimit && !applyExpiry && !applyReqLimit && !applyIpLimit && !applyFingerprint && !applyPorts && !applyIps) {
+			const applyFrag = document.getElementById('bulk-apply-frag').checked;
+			const fragLenValue = document.getElementById('bulk-input-frag-len').value || '20-30';
+			const fragIntValue = document.getElementById('bulk-input-frag-int').value || '1-2';
+            if (!applyLimit && !applyExpiry && !applyReqLimit && !applyIpLimit && !applyFingerprint && !applyPorts && !applyIps && !applyFrag) {
                 alert('⚠️ لطفا حداقل یک فیلد را برای اعمال تغییر انتخاب کنید!');
                 submitButton.disabled = false;
                 submitButton.innerText = 'ثبت تغییرات گروهی';
@@ -3267,6 +3286,8 @@ login: `<!DOCTYPE html>
                     const port = applyPorts ? portsValue : user.port;
                     const tls = applyPorts ? tlsValue : user.tls;
                     const ips = applyIps ? ipsValue : user.ips;
+					const frag_len = applyFrag ? fragLenValue : user.frag_len;
+					const frag_int = applyFrag ? fragIntValue : user.frag_int;
                     try {
                         const response = await fetch('/api/users/' + encodeURIComponent(uname), {
                             method: 'PUT',
@@ -3280,7 +3301,9 @@ login: `<!DOCTYPE html>
                                 port,
                                 ips,
                                 fingerprint,
-                                ip_limit: ipLimit
+                                ip_limit: ipLimit,
+                                frag_len: frag_len,
+                                frag_int: frag_int
                             })
                         });
                         if (response.ok) {
@@ -3300,8 +3323,6 @@ login: `<!DOCTYPE html>
                 submitButton.innerText = 'ثبت تغییرات گروهی';
             }
         }
-        window.globalFragLen = "20-30";
-        window.globalFragInt = "1-2";
         const tlsPorts = ['443', '2053', '2083', '2087', '2096', '8443'];
         const nonTlsPorts = ['80', '8080', '8880', '2052', '2082', '2086', '2095'];
         let isEditMode = false;
@@ -3380,7 +3401,11 @@ login: `<!DOCTYPE html>
                 const bpCheck = document.getElementById('input-block-porn');
                 if (bpCheck) bpCheck.checked = false;
                 const baCheck = document.getElementById('input-block-ads');
-                if (baCheck) baCheck.checked = false;
+				if (baCheck) baCheck.checked = false;
+				const fragLenInput = document.getElementById('input-frag-len');
+				if (fragLenInput) fragLenInput.value = '20-30';
+				const fragIntInput = document.getElementById('input-frag-int');
+				if (fragIntInput) fragIntInput.value = '1-2';
             }
         }
 		function toggleUpdateModal(show, version = '') {
@@ -3876,6 +3901,8 @@ login: `<!DOCTYPE html>
 			const checkedPorts = Array.from(document.querySelectorAll('input[name="ports"]:checked')).map(cb => cb.value);
 			const block_porn = document.getElementById('input-block-porn').checked;
 			const block_ads = document.getElementById('input-block-ads').checked;
+			const frag_len = document.getElementById('input-frag-len').value;
+			const frag_int = document.getElementById('input-frag-int').value;
 			if (checkedPorts.length === 0) {
                 alert('⚠️ لطفا حداقل یک پورت را برای اتصال انتخاب کنید!');
                 submitButton.disabled = false;
@@ -3892,7 +3919,7 @@ login: `<!DOCTYPE html>
                 const response = await fetch(url, {
                     method: method,
                     headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ username, limit_gb: limit, expiry_days: expiry, limit_req: reqLimit, tls, port, ips, fingerprint, ip_limit: ipLimit, block_porn: block_porn, block_ads: block_ads })
+					body: JSON.stringify({ username, limit_gb: limit, expiry_days: expiry, limit_req: reqLimit, tls, port, ips, fingerprint, ip_limit: ipLimit, block_porn: block_porn, block_ads: block_ads, frag_len: frag_len, frag_int: frag_int })
                 });
                 if (response.ok) {
                     toggleModal(false);
@@ -3943,7 +3970,7 @@ function closeFreePanelWarning() {
     card.classList.remove('opacity-100', 'scale-100');
     card.classList.add('opacity-0', 'scale-95');
 }
-        function getVlessLink(username) {
+function getVlessLink(username) {
             const user = window.allUsers.find(u => u.username === username);
             if (!user) return '';
             const host = window.location.hostname;
@@ -3954,6 +3981,7 @@ function closeFreePanelWarning() {
             }
             const ports = String(user.port || '443').split(',').map(p => p.trim()).filter(p => p.length > 0);
             const fp = user.fingerprint || 'chrome';
+            const userFrag = (user.frag_len && user.frag_int) ? '&fragment=' + user.frag_len + ',' + user.frag_int : '';
             const links = [];
             const m1 = decodeURIComponent('%E2%9A%A0%EF%B8%8F%D8%A7%DB%8C%D9%86%20%D9%BE%D9%86%D9%84%20%D8%B1%D8%A7%DB%8C%DA%AF%D8%A7%D9%86%20%D9%88%20%D8%BA%DB%8C%D8%B1%20%D9%82%D8%A7%D8%A8%D9%84%20%D9%81%D8%B1%D9%88%D8%B4%20%D8%A7%D8%B3%D8%AA%E2%9A%A0%EF%B8%8F');
             const m2 = decodeURIComponent('%E2%99%A8%EF%B8%8F%20%40IR_NETLIFY%20%D8%B3%D8%A7%D8%AE%D8%AA%20%D8%B1%D8%A7%DB%8C%DA%AF%D8%A7%D9%86%20%E2%99%A8%EF%B8%8F');
@@ -3964,7 +3992,7 @@ function closeFreePanelWarning() {
                     const isTlsPort = tlsPorts.includes(portStr);
                     const tlsVal = isTlsPort ? 'tls' : 'none';
                     const remark = user.username + ' | ' + ip + ' | ' + portStr;
-                    links.push('vle' + 'ss://' + (user.uuid || '') + '@' + ip + ':' + portStr + '?path=%2FIn_Panel_Rayeghan_Ast_Va_Gheyre_Ghabele_Foroosh&security=' + tlsVal + '&encryption=none&insecure=0&host=' + host + '&fp=' + fp + '&type=ws&allowInsecure=0&sni=' + host + '#' + encodeURIComponent(remark));
+                    links.push('vle' + 'ss://' + (user.uuid || '') + '@' + ip + ':' + portStr + '?path=%2FIn_Panel_Rayeghan_Ast_Va_Gheyre_Ghabele_Foroosh&security=' + tlsVal + '&encryption=none&insecure=0&host=' + host + '&fp=' + fp + '&type=ws&allowInsecure=0&sni=' + host + userFrag + '#' + encodeURIComponent(remark));
                 });
             });
             return links.join('\\n');
@@ -4036,7 +4064,9 @@ function editUser(encodedUsername) {
     const username = decodeURIComponent(encodedUsername);
     const user = window.allUsers.find(u => u.username === username);
 	document.getElementById('input-block-porn').checked = user.block_porn === 1;
-	document.getElementById('input-block-ads').checked = user.block_ads === 1;
+	document.getElementById('input-block-ads').checked = (user.block_ads === 1);
+	document.getElementById('input-frag-len').value = user.frag_len || '20-30';
+	document.getElementById('input-frag-int').value = user.frag_int || '1-2';
     if (!user) {
         alert('کاربر یافت نشد!');
         return;
@@ -4101,93 +4131,81 @@ function editUser(encodedUsername) {
             });
             select.innerHTML = html;
         }
-        async function loadLocations() {
-            const select = document.getElementById('location-select');
-            const cachedLocations = localStorage.getItem('cached_locations_list');
-            const cachedActiveIata = localStorage.getItem('cached_active_iata') || '';
-            let hasCachedLocs = false;
-            if (cachedLocations) {
-                try {
-                    const parsedLocs = JSON.parse(cachedLocations);
-                    if (Array.isArray(parsedLocs) && parsedLocs.length > 0) {
-                        renderLocationsUI(parsedLocs, cachedActiveIata);
-                        hasCachedLocs = true;
-                    }
-                } catch(e) {}
+async function loadLocations() {
+    const select = document.getElementById('location-select');
+    const cachedLocations = localStorage.getItem('cached_locations_list');
+    const cachedActiveIata = localStorage.getItem('cached_active_iata') || '';
+    let hasCachedLocs = false;
+    if (cachedLocations) {
+        try {
+            const parsedLocs = JSON.parse(cachedLocations);
+            if (Array.isArray(parsedLocs) && parsedLocs.length > 0) {
+                renderLocationsUI(parsedLocs, cachedActiveIata);
+                hasCachedLocs = true;
             }
-            try {
-                const statusRes = await fetch('/api/proxy-ip');
-                let activeIata = '';
-                if (statusRes.ok) {
-                    const statusData = await statusRes.json();
-                    activeIata = statusData.iata || '';
-                    localStorage.setItem('cached_active_iata', activeIata);
-                    if(statusData.frag_len) {
-                        window.globalFragLen = statusData.frag_len;
-                        document.getElementById('frag-length').value = statusData.frag_len;
+        } catch(e) {}
+    }
+    try {
+        const statusRes = await fetch('/api/proxy-ip');
+        let activeIata = '';
+        if (statusRes.ok) {
+            const statusData = await statusRes.json();
+            activeIata = statusData.iata || '';
+            localStorage.setItem('cached_active_iata', activeIata);
+        }
+        const res = await fetch('/locations');
+        if (!res.ok) throw new Error();
+        const locations = await res.json();
+        localStorage.setItem('cached_locations_list', JSON.stringify(locations));
+        renderLocationsUI(locations, activeIata);
+    } catch (err) {
+        if (!hasCachedLocs) {
+            select.innerHTML = '<option value="">⚠️ خطا در دریافت لوکیشن‌ها</option>';
+        }
+    }
+}
+async function saveSettings() {
+    const select = document.getElementById('location-select');
+    const iata = select.value;
+    const btn = document.getElementById('save-settings-btn');
+    btn.disabled = true;
+    btn.innerText = 'در حال ذخیره...';
+    try {
+        let resolvedIp = 'proxyip.cmliussss.net';
+        if (iata) {
+            const domain = iata.toLowerCase() + '.proxyip.cmliussss.net';
+            const dnsRes = await fetch('https://cloudflare-dns.com/dns-query?name=' + domain + '&type=A', {
+                headers: { 'accept': 'application/dns-json' }
+            });
+            resolvedIp = domain;
+            if (dnsRes.ok) {
+                const dnsData = await dnsRes.json();
+                if (dnsData.Answer && dnsData.Answer.length > 0) {
+                    const ips = dnsData.Answer.filter(ans => ans.type === 1).map(ans => ans.data);
+                    if (ips.length > 0) {
+                        resolvedIp = ips[Math.floor(Math.random() * ips.length)];
                     }
-                    if(statusData.frag_int) {
-                        window.globalFragInt = statusData.frag_int;
-                        document.getElementById('frag-interval').value = statusData.frag_int;
-                    }
-                }
-                const res = await fetch('/locations');
-                if (!res.ok) throw new Error();
-                const locations = await res.json();
-                localStorage.setItem('cached_locations_list', JSON.stringify(locations));
-                renderLocationsUI(locations, activeIata);
-            } catch (err) {
-                if (!hasCachedLocs) {
-                    select.innerHTML = '<option value="">⚠️ خطا در دریافت لوکیشن‌ها</option>';
                 }
             }
         }
-        async function saveSettings() {
-            const select = document.getElementById('location-select');
-            const fragLen = document.getElementById('frag-length').value || "20-30";
-            const fragInt = document.getElementById('frag-interval').value || "1-2";
-            const iata = select.value;
-            const btn = document.getElementById('save-settings-btn');
-            btn.disabled = true;
-            btn.innerText = 'در حال ذخیره...';
-            try {
-                let resolvedIp = 'proxyip.cmliussss.net';
-                if (iata) {
-                    const domain = iata.toLowerCase() + '.proxyip.cmliussss.net';
-                    const dnsRes = await fetch('https://cloudflare-dns.com/dns-query?name=' + domain + '&type=A', {
-                        headers: { 'accept': 'application/dns-json' }
-                    });
-                    resolvedIp = domain;
-                    if (dnsRes.ok) {
-                        const dnsData = await dnsRes.json();
-                        if (dnsData.Answer && dnsData.Answer.length > 0) {
-                            const ips = dnsData.Answer.filter(ans => ans.type === 1).map(ans => ans.data);
-                            if (ips.length > 0) {
-                                resolvedIp = ips[Math.floor(Math.random() * ips.length)];
-                            }
-                        }
-                    }
-                }
-                const response = await fetch('/api/proxy-ip', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ proxy_ip: resolvedIp, iata: iata ? iata.toUpperCase() : '', frag_len: fragLen, frag_int: fragInt })
-                });
-                if (response.ok) {
-                    window.globalFragLen = fragLen;
-                    window.globalFragInt = fragInt;
-                    alert('✅ تنظیمات با موفقیت ذخیره شد.\\n' + (iata ? 'آی‌پی پروکسی کلودفلر: ' + resolvedIp : 'آدرس پروکسی به حالت پیش‌فرض بازگشت.'));
-                    toggleSettingsModal(false);
-                } else {
-                    alert('خطا در ذخیره تنظیمات');
-                }
-            } catch (err) {
-                alert('خطا در برقراری ارتباط با سرور');
-            } finally {
-                btn.disabled = false;
-                btn.innerText = 'ذخیره تنظیمات';
-            }
+        const response = await fetch('/api/proxy-ip', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ proxy_ip: resolvedIp, iata: iata ? iata.toUpperCase() : '' })
+        });
+        if (response.ok) {
+            alert('✅ تنظیمات با موفقیت ذخیره شد.\\n' + (iata ? 'آی‌پی پروکسی کلودفلر: ' + resolvedIp : 'آدرس پروکسی به حالت پیش‌فرض بازگشت.'));
+            toggleSettingsModal(false);
+        } else {
+            alert('خطا در ذخیره تنظیمات');
         }
+    } catch (err) {
+        alert('خطا در برقراری ارتباط با سرور');
+    } finally {
+        btn.disabled = false;
+        btn.innerText = 'ذخیره تنظیمات';
+    }
+}
         function exportUsersBackup() {
             if (!window.allUsers || window.allUsers.length === 0) {
                 alert('⚠️ کاربری برای پشتیبان‌گیری وجود ندارد!');
@@ -4244,9 +4262,7 @@ function editUser(encodedUsername) {
                         if (exists) {
                             if (overwrite) {
                                 try {
-                                    // Delete first
                                     await fetch('/api/users/' + encodeURIComponent(u.username), { method: 'DELETE' });
-                                    // Post
                                     const res = await fetch('/api/users', {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' },
@@ -4264,7 +4280,11 @@ function editUser(encodedUsername) {
                                             used_gb: u.used_gb,
                                             used_req: u.used_req,
                                             created_at: u.created_at,
-                                            is_active: u.is_active
+                                            is_active: u.is_active,
+                                            block_porn: u.block_porn,
+                                            block_ads: u.block_ads,
+                                            frag_len: u.frag_len,
+                                            frag_int: u.frag_int
                                         })
                                     });
                                     if (res.ok) successCount++;
@@ -4289,7 +4309,11 @@ function editUser(encodedUsername) {
                                         used_gb: u.used_gb,
                                         used_req: u.used_req,
                                         created_at: u.created_at,
-                                        is_active: u.is_active
+                                        is_active: u.is_active,
+                                        block_porn: u.block_porn,
+                                        block_ads: u.block_ads,
+                                        frag_len: u.frag_len,
+                                        frag_int: u.frag_int
                                     })
                                 });
                                 if (res.ok) successCount++;
@@ -4357,7 +4381,7 @@ function editUser(encodedUsername) {
                 window.location.reload();
             }
         }
-const CURRENT_VERSION = '1.5.11';
+const CURRENT_VERSION = '1.5.12';
 const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
 		async function checkForUpdates(isManual = false) {
             try {
@@ -4772,13 +4796,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             var ports = String(u.port || '443').split(',').map(function(p) { return p.trim(); }).filter(function(p) { return p.length > 0; });
             var fp = u.fingerprint || 'chrome';
+            const userFrag = (u.frag_len && u.frag_int) ? '&fragment=' + u.frag_len + ',' + u.frag_int : '';
             var links = [];
             ips.forEach(function(ip, ipIndex) {
                 ports.forEach(function(portStr) {
                     var isTlsPort = ['443', '2053', '2083', '2087', '2096', '8443'].includes(portStr);
                     var tlsVal = isTlsPort ? 'tls' : 'none';
                     var remark = ips.length > 1 ? (u.username + '-' + (ipIndex + 1) + '-' + portStr) : (u.username + '-' + portStr);
-                    links.push('vle' + 'ss://' + (u.uuid || '') + '@' + ip + ':' + portStr + '?path=%2FIn_Panel_Rayeghan_Ast_Va_Gheyre_Ghabele_Foroosh&security=' + tlsVal + '&encryption=none&insecure=0&host=' + host + '&fp=' + fp + '&type=ws&allowInsecure=0&sni=' + host + '#' + encodeURIComponent(remark));
+                    links.push('vle' + 'ss://' + (u.uuid || '') + '@' + ip + ':' + portStr + '?path=%2FIn_Panel_Rayeghan_Ast_Va_Gheyre_Ghabele_Foroosh&security=' + tlsVal + '&encryption=none&insecure=0&host=' + host + '&fp=' + fp + '&type=ws&allowInsecure=0&sni=' + host + userFrag + '#' + encodeURIComponent(remark));
                 });
             });
             return links.join('\\n');
