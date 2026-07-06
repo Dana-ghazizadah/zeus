@@ -520,14 +520,21 @@ const Router = {
 					} catch (e) {}
 				}
 				const startTime = Date.now();
-				const s = await connectProxy(proxy, "1.1.1.1", 443, null);
+				const payload = new TextEncoder().encode("GET / HTTP/1.1\r\nHost: 1.1.1.1\r\nConnection: close\r\n\r\n");
+				const s = await connectProxy(proxy, "1.1.1.1", 80, payload);
+				const reader = s.readable.getReader();
+				const res = await reader.read();
+				if (res.done || !res.value) {
+					s.close();
+					throw new Error("تایم‌اوت در دریافت دیتا");
+				}
 				s.close();
 				const ping = Date.now() - startTime;
 				return new Response(JSON.stringify({ success: true, ping, country }), { headers: { "Content-Type": "application/json" } });
 			} catch (e) {
 				let msg = e.message;
 				if (msg.includes("Stream was cancelled") || msg.includes("network")) msg = "ارتباط با سرور قطع شد (احتمالاً پروکسی مسدود یا خاموش است)";
-				else if (msg.includes("timeout") || msg.includes("timed out")) msg = "تایم‌اوت در اتصال (پروکسی در دسترس نیست)";
+				else if (msg.includes("timeout") || msg.includes("timed out") || msg.includes("تایم‌اوت")) msg = "تایم‌اوت در اتصال (پروکسی در دسترس نیست)";
 				else if (msg.includes("Invalid URL") || msg.includes("Invalid format")) msg = "فرمت وارد شده برای پروکسی اشتباه است";
 				else if (msg === "err") msg = "خطای نامشخص (ارتباط برقرار نشد)";
 				return new Response(JSON.stringify({ error: msg }), { status: 500, headers: { "Content-Type": "application/json" } });
@@ -3105,7 +3112,7 @@ const HTML_TEMPLATES = {
                         </div>
                     </div>
                 </div>
-				<div class="pt-4 border-t border-gray-100 dark:border-zinc-800">
+				<div class="pt-4 border-t-2 border-gray-300 dark:border-zinc-700">
                     <div class="flex items-center justify-between gap-2 mb-3">
                         <div class="flex items-center gap-1.5 min-w-0">
                             <label class="relative inline-flex items-center cursor-pointer select-none flex-shrink-0">
@@ -3118,16 +3125,19 @@ const HTML_TEMPLATES = {
                     </div>
                     <div class="relative transition-opacity duration-300 opacity-50 pointer-events-none" id="socks5-container">
                         <input type="text" id="socks5-input" placeholder="socks5:// یا http:// یا (user:pass@ip:port)" dir="ltr" class="w-full px-3 py-2.5 bg-gray-50 dark:bg-amoled-input border border-gray-300 dark:border-amoled-border rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 dark:text-zinc-100 transition" disabled>
-                        <div class="mt-2 flex flex-wrap items-center justify-between w-full gap-2">
-                            <div class="flex items-center gap-2">
-                                <button type="button" onclick="testSocksProxy()" id="test-proxy-btn" class="text-[11px] bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 px-2 py-0.5 rounded border border-sky-200 dark:border-sky-800 hover:bg-sky-100 dark:hover:bg-sky-900/50 transition font-bold shadow-sm flex-shrink-0">تست پروکسی</button>
-                                <span id="test-proxy-result" class="text-[11px] font-bold transition-colors break-words leading-relaxed empty:hidden"></span>
-                            </div>
-                            <button type="button" onclick="openProxySelectorModal()" class="text-[11px] bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded border border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition font-bold shadow-sm flex-shrink-0">مخزن پروکسی</button>
+                        <div class="w-full text-center">
+                            <span id="test-proxy-result" class="inline-block mt-2 text-[11px] font-bold transition-colors break-words leading-relaxed empty:hidden"></span>
+                        </div>
+                        <div class="mt-2 flex items-center justify-between w-full gap-2">
+                            <button type="button" onclick="testSocksProxy()" id="test-proxy-btn" class="flex-1 text-center text-[11px] bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 py-1.5 rounded border border-sky-200 dark:border-sky-800 hover:bg-sky-100 dark:hover:bg-sky-900/50 transition font-bold shadow-sm">تست پروکسی</button>
+                            <button type="button" onclick="openProxySelectorModal()" class="flex-1 text-center text-[11px] bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 py-1.5 rounded border border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition font-bold shadow-sm">مخزن پروکسی</button>
+                        </div>
+                        <div class="mt-3 p-3 border-2 border-dashed border-orange-400 dark:border-orange-500/70 bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300 rounded-xl text-[11px] font-bold leading-relaxed text-center w-full">
+                            پروکسی‌های موجود در این مخزن عمومی بوده و ممکن است باعث افت سرعت و کاهش پایداری کانفیگ‌ها شوند. جهت دستیابی به بالاترین سطح کیفیت، پیشنهاد می‌شود از طریق دکمه‌ی <span class="text-blue-600 dark:text-blue-400 font-black">«ساخت پروکسی شخصی»</span> نسبت به راه‌اندازی پروکسی اختصاصی بر روی سرور خود اقدام نمایید.
                         </div>
                     </div>
                 </div>
-                <div class="pt-4 border-t border-gray-100 dark:border-zinc-800">
+                <div class="pt-4 border-t-2 border-gray-300 dark:border-zinc-700">
                     <label class="block text-sm font-medium mb-1.5 text-gray-700 dark:text-zinc-300">نرخ رفرش خودکار پنل</label>
                     <div class="relative">
                         <select id="refresh-rate-select" onchange="changeRefreshRate(this.value)" class="w-full pl-8 pr-3 py-2.5 bg-white dark:bg-amoled-input border border-gray-300 dark:border-amoled-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700 dark:text-zinc-200 cursor-pointer appearance-none">
@@ -3146,7 +3156,7 @@ const HTML_TEMPLATES = {
                     </div>
                 </div>
                
-                <div class="pt-4 border-t border-gray-100 dark:border-zinc-800">
+                <div class="pt-4 border-t-2 border-gray-300 dark:border-zinc-700">
                     <h4 class="text-sm font-bold mb-3 text-gray-800 dark:text-zinc-200">🔒 تغییر رمز عبور مدیریت</h4>
                     <div class="space-y-3">
                         <div>
@@ -3160,7 +3170,7 @@ const HTML_TEMPLATES = {
                         <button type="button" onclick="changeAdminPassword()" id="change-pwd-btn" class="w-full py-2 bg-transparent border-2 border-emerald-500 text-emerald-600 hover:bg-emerald-500 hover:text-white dark:border-emerald-400 dark:text-emerald-400 dark:hover:bg-emerald-500 dark:hover:text-white font-semibold rounded-lg text-xs transition-all shadow-sm">تغییر رمز عبور</button>
                     </div>
                 </div>
-                <div class="pt-4 border-t border-gray-100 dark:border-zinc-800">
+                <div class="pt-4 border-t-2 border-gray-300 dark:border-zinc-700">
                     <h4 class="text-sm font-bold mb-3 text-gray-800 dark:text-zinc-200">💾 پشتیبان‌گیری و بازیابی</h4>
                     <div class="grid grid-cols-2 gap-3">
                         <button type="button" onclick="exportUsersBackup()" class="py-2.5 bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-900/50 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm">
@@ -5032,7 +5042,7 @@ window.filterLocations = function() {
                 window.location.reload();
             }
         }
-const CURRENT_VERSION = '1.7.0';
+const CURRENT_VERSION = '1.7.1';
 const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
 		async function checkForUpdates(isManual = false) {
             try {
@@ -5376,18 +5386,34 @@ async function fetchAndLoadProxy() {
     const fetchBtn = document.getElementById('proxy-fetch-btn');
 
     loadingState.classList.remove('hidden');
-    loadingState.innerText = 'در حال اسکن سریع پروکسی‌ها...';
+    loadingState.innerText = 'در حال دریافت لیست پروکسی‌ها...';
     formState.classList.add('hidden');
     fetchBtn.disabled = true;
 
     try {
-        const sources = [
-            { url: 'https://raw.githubusercontent.com/proxifly/free-proxy-list/refs/heads/main/proxies/countries/' + country + '/data.txt', prefix: '' },
-            { url: 'https://api.proxyscrape.com/v2/?request=displayproxies&protocol=socks5&country=' + country, prefix: 'socks5://' },
-            { url: 'https://api.proxyscrape.com/v2/?request=displayproxies&protocol=socks4&country=' + country, prefix: 'socks4://' },
-            { url: 'https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&country=' + country, prefix: 'http://' },
-            { url: 'https://api.proxyscrape.com/v2/?request=displayproxies&protocol=https&country=' + country, prefix: 'https://' }
-        ];
+		const sources = [
+			{ url: 'https://raw.githubusercontent.com/proxifly/free-proxy-list/refs/heads/main/proxies/countries/' + country.toUpperCase() + '/data.txt', prefix: '' },
+    
+			{ url: 'https://api.proxyscrape.com/v2/?request=displayproxies&protocol=socks5&country=' + country, prefix: 'socks5://' },
+			{ url: 'https://api.proxyscrape.com/v2/?request=displayproxies&protocol=socks4&country=' + country, prefix: 'socks4://' },
+			{ url: 'https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&country=' + country, prefix: 'http://' },
+			{ url: 'https://api.proxyscrape.com/v2/?request=displayproxies&protocol=https&country=' + country, prefix: 'https://' },
+    
+			{ url: 'https://api.proxyscrape.com/v3/free-proxy-list/get?request=displayproxies&protocol=socks5&country=' + country, prefix: 'socks5://' },
+			{ url: 'https://api.proxyscrape.com/v3/free-proxy-list/get?request=displayproxies&protocol=socks4&country=' + country, prefix: 'socks4://' },
+			{ url: 'https://api.proxyscrape.com/v3/free-proxy-list/get?request=displayproxies&protocol==http&country=' + country, prefix: 'http://' },
+			{ url: 'https://api.proxyscrape.com/v3/free-proxy-list/get?request=displayproxies&protocol=https&country=' + country, prefix: 'https://' },
+    
+			{ url: 'https://api.proxyscrape.com/v3/free-proxy-list/get?request=displayproxies&protocol=socks5&country=' + country + '&format=text', prefix: 'socks5://' },
+			{ url: 'https://api.proxyscrape.com/v3/free-proxy-list/get?request=displayproxies&protocol=socks4&country=' + country + '&format=text', prefix: 'socks4://' },
+			{ url: 'https://api.proxyscrape.com/v3/free-proxy-list/get?request=displayproxies&protocol=http&country=' + country + '&format=text', prefix: 'http://' },
+			{ url: 'https://api.proxyscrape.com/v3/free-proxy-list/get?request=displayproxies&protocol=https&country=' + country + '&format=text', prefix: 'https://' },
+			
+			{ url: 'https://api.proxyscrape.com/v4/free-proxy-list/get?request=getproxies&protocol=socks5&country=' + country + '&format=text', prefix: 'socks5://' },
+			{ url: 'https://api.proxyscrape.com/v4/free-proxy-list/get?request=getproxies&protocol=socks4&country=' + country + '&format=text', prefix: 'socks4://' },
+			{ url: 'https://api.proxyscrape.com/v4/free-proxy-list/get?request=getproxies&protocol=http&country=' + country + '&format=text', prefix: 'http://' },
+			{ url: 'https://api.proxyscrape.com/v4/free-proxy-list/get?request=getproxies&protocol=https&country=' + country + '&format=text', prefix: 'https://' }
+		];
 
         const responses = await Promise.allSettled(sources.map(src => 
             fetch(src.url).then(async res => {
@@ -5423,18 +5449,22 @@ async function fetchAndLoadProxy() {
                 [lines[i], lines[j]] = [lines[j], lines[i]];
             }
 
-            let foundWorkingProxy = null;
-            const BATCH_SIZE = 10;
+            let bestProxy = null;
+            let fallbackProxy = null;
+            const BATCH_SIZE = 5;
 
             for (let i = 0; i < lines.length; i += BATCH_SIZE) {
                 const batch = lines.slice(i, i + BATCH_SIZE);
-                loadingState.innerText = 'تست گروه ' + (Math.floor(i / BATCH_SIZE) + 1) + ' (بررسی ' + batch.length + ' آی‌پی)...';
+                loadingState.innerText = 'تعداد ' + lines.length + ' پروکسی پیدا شد درحال اسکن\\nاسکن گروه ' + (Math.floor(i / BATCH_SIZE) + 1) + ' (۵ تست برای هر کدام)...';
 
-                try {
-                    foundWorkingProxy = await Promise.any(batch.map(async (candidate) => {
+                const testResults = await Promise.allSettled(batch.map(async (candidate) => {
+                    let successCount = 0;
+                    let totalPing = 0;
+                    let failCount = 0;
+                    
+                    for(let t = 0; t < 5; t++) {
                         const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 5000);
-
+                        const timeoutId = setTimeout(() => controller.abort(), 3500);
                         try {
                             const testRes = await fetch('/api/test-proxy', {
                                 method: 'POST',
@@ -5445,27 +5475,57 @@ async function fetchAndLoadProxy() {
                             clearTimeout(timeoutId);
                             const testData = await testRes.json();
                             if (testRes.ok && testData.success) {
-                                return candidate;
+                                successCount++;
+                                totalPing += testData.ping;
+                            } else {
+                                failCount++;
                             }
-                            throw new Error();
                         } catch (err) {
                             clearTimeout(timeoutId);
-                            throw err;
+                            failCount++;
                         }
-                    }));
+                        
+                        if (failCount > 2) break;
+                    }
                     
-                    if (foundWorkingProxy) break;
-                } catch (e) {
+                    if (successCount > 0) {
+                        return { proxy: candidate, successCount: successCount, avgPing: totalPing / successCount };
+                    }
+                    throw new Error();
+                }));
+
+                const successfulProxies = testResults
+                    .filter(r => r.status === 'fulfilled')
+                    .map(r => r.value)
+                    .sort((a, b) => {
+                        if (b.successCount !== a.successCount) {
+                            return b.successCount - a.successCount;
+                        }
+                        return a.avgPing - b.avgPing;
+                    });
+
+                if (successfulProxies.length > 0) {
+                    const topCandidate = successfulProxies[0];
+                    if (topCandidate.successCount >= 3) {
+                        bestProxy = topCandidate.proxy;
+                        break;
+                    } else if (!fallbackProxy || topCandidate.successCount > fallbackProxy.successCount) {
+                        fallbackProxy = topCandidate;
+                    }
                 }
             }
 
-            if (foundWorkingProxy) {
-                document.getElementById('socks5-input').value = foundWorkingProxy;
+            if (!bestProxy && fallbackProxy) {
+                bestProxy = fallbackProxy.proxy;
+            }
+
+            if (bestProxy) {
+                document.getElementById('socks5-input').value = bestProxy;
                 document.getElementById('test-proxy-result').innerText = '';
                 toggleProxySelectorModal(false);
-                showToast('پروکسی سالم پیدا و لود شد.');
+                showToast('پروکسی با بهترین امتیاز لود شد.');
             } else {
-                alert('پروکسی سالم در این کشور یافت نشد');
+                alert('هیچ پروکسی سالمی (حتی با یک پینگ موفق) یافت نشد.');
             }
         } else {
             alert('پروکسی برای این کشور یافت نشد.');
