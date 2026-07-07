@@ -459,7 +459,9 @@ const Router = {
 					const { results } = await env.DB.prepare("SELECT * FROM settings").all();
 					const settingsObj = {};
 					if (results) {
-						results.forEach(r => { settingsObj[r.key] = r.value; });
+						results.forEach((r) => {
+							settingsObj[r.key] = r.value;
+						});
 					}
 					return new Response(JSON.stringify(settingsObj), { headers: { "Content-Type": "application/json" } });
 				} catch (e) {
@@ -492,7 +494,7 @@ const Router = {
 					JSON.stringify({
 						proxy_ip: rowIp ? rowIp.value : "proxyip.cmliussss.net",
 						iata: rowIata ? rowIata.value : "",
-						socks5: rowSocks ? rowSocks.value : ""
+						socks5: rowSocks ? rowSocks.value : "",
 					}),
 					{ headers: { "Content-Type": "application/json" } },
 				);
@@ -507,14 +509,14 @@ const Router = {
 				if (proxy.includes("t.me/socks") || proxy.includes("tg://socks")) {
 					ip = proxy.match(/server=([^&]+)/)?.[1] || "";
 				} else {
-					let cleanProxy = proxy.replace(/^(socks4|socks5|socks|http|https):\/\//i, '');
+					let cleanProxy = proxy.replace(/^(socks4|socks5|socks|http|https):\/\//i, "");
 					let remain = cleanProxy;
-					if (remain.includes('@')) remain = remain.substring(remain.lastIndexOf('@') + 1);
-					if (remain.startsWith('[')) {
-						ip = remain.substring(1, remain.indexOf(']'));
+					if (remain.includes("@")) remain = remain.substring(remain.lastIndexOf("@") + 1);
+					if (remain.startsWith("[")) {
+						ip = remain.substring(1, remain.indexOf("]"));
 					} else {
-						const lastColon = remain.lastIndexOf(':');
-						if (lastColon !== -1 && remain.indexOf(':') === lastColon) ip = remain.substring(0, lastColon);
+						const lastColon = remain.lastIndexOf(":");
+						if (lastColon !== -1 && remain.indexOf(":") === lastColon) ip = remain.substring(0, lastColon);
 						else ip = remain;
 					}
 				}
@@ -1316,7 +1318,7 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 					offset += domainLen;
 				} else if (addrType === 3) {
 					const v6 = [];
-					for(let i=0; i<8; i++) {
+					for (let i = 0; i < 8; i++) {
 						v6.push(((chunkBuffer[offset++] << 8) | chunkBuffer[offset++]).toString(16));
 					}
 					addr = v6.join(":");
@@ -1340,7 +1342,7 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 					const task = (async () => {
 						let s = null;
 						const socks5 = user?.user_socks5 || "";
-						
+
 						if (socks5) {
 							s = await connectProxy(socks5, addr, port, dataPayload);
 						} else {
@@ -2125,9 +2127,9 @@ async function connectProxy(proxyStr, destAddr, destPort, initialData) {
 		}
 	}
 
-	const isHttp = normalized.toLowerCase().startsWith('http://') || normalized.toLowerCase().startsWith('https://');
-	let cleanStr = normalized.replace(/^(socks4|socks5|socks|http|https):\/\//i, '');
-	
+	const isHttp = normalized.toLowerCase().startsWith("http://") || normalized.toLowerCase().startsWith("https://");
+	let cleanStr = normalized.replace(/^(socks4|socks5|socks|http|https):\/\//i, "");
+
 	if (isHttp) {
 		return await connectHttp(cleanStr, destAddr, destPort, initialData);
 	}
@@ -2135,7 +2137,10 @@ async function connectProxy(proxyStr, destAddr, destPort, initialData) {
 }
 
 async function connectSocks5(socksStr, destAddr, destPort, initialData) {
-	let user = "", pass = "", host = "", port = 1080;
+	let user = "",
+		pass = "",
+		host = "",
+		port = 1080;
 	let auth = false;
 	let remain = socksStr;
 	if (remain.includes("@")) {
@@ -2144,7 +2149,8 @@ async function connectSocks5(socksStr, destAddr, destPort, initialData) {
 		remain = remain.substring(atIdx + 1);
 		const colonIdx = authPart.indexOf(":");
 		if (colonIdx !== -1) {
-			user = authPart.substring(0, colonIdx); pass = authPart.substring(colonIdx + 1);
+			user = authPart.substring(0, colonIdx);
+			pass = authPart.substring(colonIdx + 1);
 		} else {
 			user = authPart;
 		}
@@ -2161,7 +2167,8 @@ async function connectSocks5(socksStr, destAddr, destPort, initialData) {
 	} else {
 		const lastColon = remain.lastIndexOf(":");
 		if (lastColon !== -1 && remain.indexOf(":") === lastColon) {
-			host = remain.substring(0, lastColon); port = parseInt(remain.substring(lastColon + 1)) || 1080;
+			host = remain.substring(0, lastColon);
+			port = parseInt(remain.substring(lastColon + 1)) || 1080;
 		} else {
 			host = remain;
 		}
@@ -2191,7 +2198,7 @@ async function connectSocks5(socksStr, destAddr, destPort, initialData) {
 			authReq.set(uEnc, 2);
 			authReq[2 + uEnc.length] = pEnc.length;
 			authReq.set(pEnc, 3 + uEnc.length);
-			
+
 			await writer.write(authReq);
 			let authRes = await reader.read();
 			if (authRes.done || !authRes.value || authRes.value[1] !== 0x00) throw new Error("نام کاربری یا رمز عبور پروکسی اشتباه است");
@@ -2201,20 +2208,23 @@ async function connectSocks5(socksStr, destAddr, destPort, initialData) {
 		let addrBytes;
 		if (isIPv4(destAddr)) {
 			addrType = 0x01;
-			addrBytes = new Uint8Array(destAddr.split('.').map(Number));
+			addrBytes = new Uint8Array(destAddr.split(".").map(Number));
 		} else {
 			const enc = new TextEncoder().encode(destAddr);
 			addrBytes = new Uint8Array(1 + enc.length);
 			addrBytes[0] = enc.length;
 			addrBytes.set(enc, 1);
 		}
-		
+
 		const req = new Uint8Array(4 + addrBytes.length + 2);
-		req[0] = 0x05; req[1] = 0x01; req[2] = 0x00; req[3] = addrType;
+		req[0] = 0x05;
+		req[1] = 0x01;
+		req[2] = 0x00;
+		req[3] = addrType;
 		req.set(addrBytes, 4);
 		const portOffset = 4 + addrBytes.length;
-		req[portOffset] = (destPort >> 8) & 0xFF;
-		req[portOffset + 1] = destPort & 0xFF;
+		req[portOffset] = (destPort >> 8) & 0xff;
+		req[portOffset + 1] = destPort & 0xff;
 
 		await writer.write(req);
 		let connRes = await reader.read();
@@ -2228,15 +2238,24 @@ async function connectSocks5(socksStr, destAddr, destPort, initialData) {
 		reader.releaseLock();
 		return socket;
 	} catch (e) {
-		try { writer.releaseLock(); } catch(err){}
-		try { reader.releaseLock(); } catch(err){}
-		try { socket.close(); } catch(err){}
+		try {
+			writer.releaseLock();
+		} catch (err) {}
+		try {
+			reader.releaseLock();
+		} catch (err) {}
+		try {
+			socket.close();
+		} catch (err) {}
 		throw e;
 	}
 }
 
 async function connectHttp(proxyStr, destAddr, destPort, initialData) {
-	let user = "", pass = "", host = "", port = 80;
+	let user = "",
+		pass = "",
+		host = "",
+		port = 80;
 	let auth = false;
 	let remain = proxyStr;
 	if (remain.includes("@")) {
@@ -2245,7 +2264,8 @@ async function connectHttp(proxyStr, destAddr, destPort, initialData) {
 		remain = remain.substring(atIdx + 1);
 		const colonIdx = authPart.indexOf(":");
 		if (colonIdx !== -1) {
-			user = authPart.substring(0, colonIdx); pass = authPart.substring(colonIdx + 1);
+			user = authPart.substring(0, colonIdx);
+			pass = authPart.substring(colonIdx + 1);
 		} else {
 			user = authPart;
 		}
@@ -2262,7 +2282,8 @@ async function connectHttp(proxyStr, destAddr, destPort, initialData) {
 	} else {
 		const lastColon = remain.lastIndexOf(":");
 		if (lastColon !== -1 && remain.indexOf(":") === lastColon) {
-			host = remain.substring(0, lastColon); port = parseInt(remain.substring(lastColon + 1)) || 80;
+			host = remain.substring(0, lastColon);
+			port = parseInt(remain.substring(lastColon + 1)) || 80;
 		} else {
 			host = remain;
 		}
@@ -2280,9 +2301,9 @@ async function connectHttp(proxyStr, destAddr, destPort, initialData) {
 			req += `Proxy-Authorization: Basic ${authBase64}\r\n`;
 		}
 		req += "\r\n";
-		
+
 		await writer.write(new TextEncoder().encode(req));
-		
+
 		let resStr = "";
 		while (true) {
 			const res = await reader.read();
@@ -2297,7 +2318,7 @@ async function connectHttp(proxyStr, destAddr, destPort, initialData) {
 				}
 			}
 		}
-		
+
 		if (initialData && initialData.byteLength > 0) {
 			await writer.write(convertToUint8Array(initialData));
 		}
@@ -2306,9 +2327,15 @@ async function connectHttp(proxyStr, destAddr, destPort, initialData) {
 		reader.releaseLock();
 		return socket;
 	} catch (e) {
-		try { writer.releaseLock(); } catch(err){}
-		try { reader.releaseLock(); } catch(err){}
-		try { socket.close(); } catch(err){}
+		try {
+			writer.releaseLock();
+		} catch (err) {}
+		try {
+			reader.releaseLock();
+		} catch (err) {}
+		try {
+			socket.close();
+		} catch (err) {}
 		throw e;
 	}
 }
@@ -4016,7 +4043,10 @@ const HTML_TEMPLATES = {
             const userLocSelect = document.getElementById('user-location-select');
             if (userLocSelect) userLocSelect.value = '';
             const userLocSearch = document.getElementById('user-location-search');
-            if (userLocSearch) userLocSearch.value = '';
+            if (userLocSearch) {
+                userLocSearch.value = '';
+                if (typeof window.filterUserLocations === 'function') window.filterUserLocations();
+            }
             const userSocksInput = document.getElementById('user-socks5-input');
             if (userSocksInput) userSocksInput.value = '';
             const userProxyResult = document.getElementById('test-user-proxy-result');
@@ -4739,7 +4769,13 @@ function editUser(encodedUsername) {
 
     const userProxyToggle = document.getElementById('user-proxy-mode-toggle');
     const userLocSelect = document.getElementById('user-location-select');
+    const userLocSearch = document.getElementById('user-location-search');
     const userSocksInput = document.getElementById('user-socks5-input');
+
+    if (userLocSearch) {
+        userLocSearch.value = '';
+        if (typeof window.filterUserLocations === 'function') window.filterUserLocations();
+    }
 
 	const targetProxy = user.user_socks5 || user.user_proxy_ip;
 	const userProxyResult = document.getElementById('test-user-proxy-result');
@@ -5344,7 +5380,7 @@ window.filterLocations = function() {
                 window.location.reload();
             }
         }
-const CURRENT_VERSION = '1.7.4';
+const CURRENT_VERSION = '1.7.5';
 const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
 		async function checkForUpdates(isManual = false) {
             try {
