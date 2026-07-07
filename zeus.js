@@ -3049,7 +3049,7 @@ const HTML_TEMPLATES = {
                 <div class="pt-4 border-t border-gray-100 dark:border-zinc-900 space-y-4">
 					<div>
     					<div class="flex items-center justify-between mb-2">
-        					<label class="block text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider">آیپی تمیز (توصیح میشود)</label>
+        					<label class="block text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider">آیپی تمیز (توصیه میشود)</label>
         					<button 
 								type="button" 
   								onclick="openIpSelectorModal()" 
