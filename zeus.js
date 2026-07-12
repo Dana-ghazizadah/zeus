@@ -86,7 +86,7 @@ export default {
 		ctx.waitUntil(checkAutoRotates(env));
 		await DbService.ensureSchema(env.DB);
 		const url = new URL(request.url);
-		if (Router.isWebSocketUpgrade(request) && url.pathname === "/ZEUS_PANEL_BOT") {
+		if (Router.isWebSocketUpgrade(request) && url.pathname === "/PANEL_ZEUS") {
 			return await Router.handleWebSocket(request, env, ctx);
 		}
 		if (Router.isSubscriptionPath(url.pathname)) {
@@ -129,7 +129,7 @@ const Router = {
 				}
 			} catch (e) {}
 			const mockStoredData = { proxy_ip: proxyIP, socks5: socks5 };
-			return handleVLESS(env, mockStoredData, ctx, request);
+			return handlevIees(env, mockStoredData, ctx, request);
 		} catch (e) {
 			return new Response("Internal Server Error", { status: 500 });
 		}
@@ -341,15 +341,16 @@ const Router = {
 				headers: { "Content-Type": "application/json; charset=utf-8" },
 			});
 		}
-		if (url.pathname === "/api/update-panel" && request.method === "POST") {
-			const body = await request.json().catch(() => ({}));
-			let currentToken = env.CF_API_TOKEN || body.cf_token;
+		if ((url.pathname === "/api/update-panel" || url.pathname === "/api/restart-core") && request.method === "POST") {
+			const isUpdate = url.pathname === "/api/update-panel";
+			const body = isUpdate ? await request.json().catch(() => ({})) : {};
+			let currentToken = env.CF_API_TOKEN || (isUpdate ? body.cf_token : null);
 			let currentAccountId = env.CF_ACCOUNT_ID;
-			if (!currentToken) {
+			if (!currentToken || (!isUpdate && !currentAccountId)) {
 				return new Response(JSON.stringify({ error: "TOKEN_REQUIRED" }), { status: 400, headers: { "Content-Type": "application/json" } });
 			}
 			try {
-				if (!currentAccountId) {
+				if (!currentAccountId && isUpdate) {
 					const accRes = await fetch("https://api.cloudflare.com/client/v4/accounts", {
 						headers: { Authorization: "Bearer " + currentToken },
 					});
@@ -357,21 +358,23 @@ const Router = {
 					if (!accData.success || accData.result.length === 0) throw new Error("توکن نامعتبر است یا اکانتی یافت نشد.");
 					currentAccountId = accData.result[0].id;
 				}
-				const githubRes = await fetch("https://raw.githubusercontent.com/IR-NETLIFY/zeus/refs/heads/main/zeus.js?t=" + Date.now() + Math.random(), {
+				const githubRes = await fetch("https://api.github.com/repos/IR-NETLIFY/zeus/contents/zeus.js", {
 					headers: {
+						"Accept": "application/vnd.github.v3.raw",
+						"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 						"Cache-Control": "no-cache, no-store, must-revalidate",
-						Pragma: "no-cache",
-						Expires: "0",
+						"Pragma": "no-cache",
+						"Expires": "0"
 					},
 				});
-				if (!githubRes.ok) throw new Error("خطا در دریافت سورس جدید از گیت‌هاب");
+				if (!githubRes.ok) throw new Error(isUpdate ? "خطا در دریافت سورس جدید از گیت‌هاب" : "خطا در دریافت سورس از گیت‌هاب");
 				const newCode = await githubRes.text();
 				const scriptName = env.WORKER_NAME || url.hostname.split(".")[0];
 				const bindingsRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/workers/scripts/${scriptName}/bindings`, {
 					headers: { Authorization: "Bearer " + currentToken },
 				});
 				const bindingsData = await bindingsRes.json();
-				if (!bindingsData.success) throw new Error("عدم دسترسی به تنظیمات ورکر. توکن نامعتبر است.");
+				if (!bindingsData.success) throw new Error(isUpdate ? "عدم دسترسی به تنظیمات ورکر. توکن نامعتبر است." : "عدم دسترسی به تنظیمات ورکر");
 				const newBindings = [];
 				for (const b of bindingsData.result) {
 					if (b.type === "d1") {
@@ -402,61 +405,11 @@ const Router = {
 					body: formData,
 				});
 				const deployData = await deployRes.json();
-				if (!deployData.success) throw new Error("خطا در اعمال آپدیت در کلودفلر.");
+				if (!deployData.success) throw new Error(isUpdate ? "خطا در اعمال آپدیت در کلودفلر." : "خطا در اعمال ری‌استارت در کلودفلر");
 				return new Response(JSON.stringify({ success: true }), { headers: { "Content-Type": "application/json" } });
 			} catch (err) {
-				const errorMsg = err.message + " | در صورت عدم موفقیت، از طریق لینک زیر آپدیت کنید: https://zeus-install.ir-netlify.workers.dev/";
+				const errorMsg = err.message + (isUpdate ? " | در صورت عدم موفقیت، از طریق لینک زیر آپدیت کنید: https://zeus-panel.ir-netlify.workers.dev/" : "");
 				return new Response(JSON.stringify({ error: errorMsg }), { status: 500, headers: { "Content-Type": "application/json" } });
-			}
-		}
-		if (url.pathname === "/api/restart-core" && request.method === "POST") {
-			let currentToken = env.CF_API_TOKEN;
-			let currentAccountId = env.CF_ACCOUNT_ID;
-			if (!currentToken || !currentAccountId) {
-				return new Response(JSON.stringify({ error: "TOKEN_REQUIRED" }), { status: 400, headers: { "Content-Type": "application/json" } });
-			}
-			try {
-				const githubRes = await fetch("https://raw.githubusercontent.com/IR-NETLIFY/zeus/refs/heads/main/zeus.js?t=" + Date.now(), {
-					headers: {
-						"Cache-Control": "no-cache, no-store, must-revalidate",
-						Pragma: "no-cache",
-						Expires: "0",
-					},
-				});
-				if (!githubRes.ok) throw new Error("خطا در دریافت سورس از گیت‌هاب");
-				const newCode = await githubRes.text();
-				const scriptName = env.WORKER_NAME || url.hostname.split(".")[0];
-				const bindingsRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/workers/scripts/${scriptName}/bindings`, {
-					headers: { Authorization: "Bearer " + currentToken },
-				});
-				const bindingsData = await bindingsRes.json();
-				if (!bindingsData.success) throw new Error("عدم دسترسی به تنظیمات ورکر");
-				const newBindings = [];
-				for (const b of bindingsData.result) {
-					if (b.type === "d1") {
-						newBindings.push({ type: "d1", name: b.name, id: b.database_id || b.id });
-					}
-				}
-				newBindings.push({ type: "secret_text", name: "CF_API_TOKEN", text: currentToken });
-				newBindings.push({ type: "secret_text", name: "CF_ACCOUNT_ID", text: currentAccountId });
-				const metadata = {
-					main_module: "zeus.js",
-					compatibility_date: "2024-02-08",
-					bindings: newBindings,
-				};
-				const formData = new FormData();
-				formData.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
-				formData.append("zeus.js", new Blob([newCode], { type: "application/javascript+module" }), "zeus.js");
-				const deployRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/workers/scripts/${scriptName}`, {
-					method: "PUT",
-					headers: { Authorization: "Bearer " + currentToken },
-					body: formData,
-				});
-				const deployData = await deployRes.json();
-				if (!deployData.success) throw new Error("خطا در اعمال ری‌استارت در کلودفلر");
-				return new Response(JSON.stringify({ success: true }), { headers: { "Content-Type": "application/json" } });
-			} catch (err) {
-				return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { "Content-Type": "application/json" } });
 			}
 		}
 		if (url.pathname === "/api/change-password" && request.method === "POST") {
@@ -623,6 +576,9 @@ const Router = {
 					} else {
 						const { username: new_username, limit_gb, expiry_days, limit_req, ips, tls, port, fingerprint, ip_limit, block_porn, block_ads, frag_len, frag_int, user_proxy_iata, user_socks5, user_proxy_ip, auto_reset_vol_days, auto_reset_req_days, auto_rotate_ip, rotate_time, ip_operator, ip_count } = body;
 						if (new_username && new_username !== username) {
+							if (!/^[a-zA-Z0-9_-]+$/.test(new_username)) {
+								return new Response(JSON.stringify({ error: "نام کاربری جدید غیرمجاز است" }), { status: 400, headers: { "Content-Type": "application/json; charset=utf-8" } });
+							}
 							const existing = await env.DB.prepare("SELECT id FROM users WHERE username = ?").bind(new_username).first();
 							if (existing) {
 								return new Response(JSON.stringify({ error: "این نام کاربری از قبل وجود دارد" }), { status: 400, headers: { "Content-Type": "application/json" } });
@@ -712,6 +668,9 @@ const Router = {
 					}
 					if (username.length > 32) {
 						return new Response(JSON.stringify({ error: "نام کاربری نمی‌تواند بیشتر از ۳۲ کاراکتر باشد" }), { status: 400, headers: { "Content-Type": "application/json" } });
+					}
+					if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
+						return new Response(JSON.stringify({ error: "نام کاربری غیرمجاز است (فقط حروف، اعداد، خط تیره و آندرلاین)" }), { status: 400, headers: { "Content-Type": "application/json; charset=utf-8" } });
 					}
 					const finalUuid = uuid || crypto.randomUUID();
 					const parsedUsedGb = parseFloat(used_gb);
@@ -897,9 +856,9 @@ const SubscriptionService = {
 		const fp = user.fingerprint || "chrome";
 		const links = [];
 		const m1 = decodeURIComponent("%E2%9A%A0%EF%B8%8F%D9%BE%D9%86%D9%84%20%D8%B1%D8%A7%DB%8C%DA%AF%D8%A7%D9%86%20%D9%88%20%D8%BA%DB%8C%D8%B1%20%D9%82%D8%A7%D8%A8%D9%84%20%D9%81%D8%B1%D9%88%D8%B4%E2%9A%A0%EF%B8%8F");
-		const m2 = decodeURIComponent("%F0%9F%9A%80%40ZEUS_PANEL_BOT%20%D8%B3%D8%A7%D8%AE%D8%AA%20%D8%B1%D8%A7%DB%8C%DA%AF%D8%A7%D9%86%F0%9F%9A%80");
-		links.push(atob("dmxlc3M6Ly8=") + user.uuid + "@0.0.0.0:1?encryption=none&security=none&type=ws&host=" + host + "&path=%2FZEUS_PANEL_BOT#" + encodeURIComponent(m1));
-		links.push(atob("dmxlc3M6Ly8=") + user.uuid + "@0.0.0.0:1?encryption=none&security=none&type=ws&host=" + host + "&path=%2FZEUS_PANEL_BOT#" + encodeURIComponent(m2));
+		const m2 = decodeURIComponent("%F0%9F%9A%80%40PANEL_ZEUS%20%D8%B3%D8%A7%D8%AE%D8%AA%20%D8%B1%D8%A7%DB%8C%DA%AF%D8%A7%D9%86%F0%9F%9A%80");
+		links.push(atob("dmxlc3M6Ly8=") + user.uuid + "@0.0.0.0:1?encryption=none&security=none&type=ws&host=" + host + "&path=%2FPANEL_ZEUS#" + encodeURIComponent(m1));
+		links.push(atob("dmxlc3M6Ly8=") + user.uuid + "@0.0.0.0:1?encryption=none&security=none&type=ws&host=" + host + "&path=%2FPANEL_ZEUS#" + encodeURIComponent(m2));
 		let remVol = "Unlimited";
 		if (user.limit_gb) {
 			let rem = user.limit_gb - (user.used_gb || 0);
@@ -918,14 +877,14 @@ const SubscriptionService = {
 			remReq = rem > 0 ? rem.toLocaleString() + "Req" : "0Req";
 		}
 		const infoRemark = "📊 remaining | \u200E" + remVol + " | \u200E" + remTime + " | \u200E" + remReq;
-		links.push(atob("dmxlc3M6Ly8=") + user.uuid + "@" + host + ":80?path=%2FZEUS_PANEL_BOT&security=none&encryption=none&host=" + host + "&fp=" + fp + "&type=ws#" + encodeURIComponent(infoRemark));
+		links.push(atob("dmxlc3M6Ly8=") + user.uuid + "@" + host + ":80?path=%2FPANEL_ZEUS&security=none&encryption=none&host=" + host + "&fp=" + fp + "&type=ws#" + encodeURIComponent(infoRemark));
 		ips.forEach((ip) => {
 			ports.forEach((portStr) => {
 				const isTlsPort = ["443", "2053", "2083", "2087", "2096", "8443"].includes(portStr);
 				const tlsVal = isTlsPort ? "tls" : "none";
 				const userFrag = user.frag_len && user.frag_int ? "&fragment=" + user.frag_len + "," + user.frag_int : "";
 				const remark = user.username + " | \u200E" + ip + " | \u200E" + portStr;
-				links.push(atob("dmxlc3M6Ly8=") + user.uuid + "@" + ip + ":" + portStr + "?path=%2FZEUS_PANEL_BOT&security=" + tlsVal + "&encryption=none&insecure=0&host=" + host + "&fp=" + fp + "&type=ws&allowInsecure=0&sni=" + host + userFrag + "#" + encodeURIComponent(remark));
+				links.push(atob("dmxlc3M6Ly8=") + user.uuid + "@" + ip + ":" + portStr + "?path=%2FPANEL_ZEUS&security=" + tlsVal + "&encryption=none&insecure=0&host=" + host + "&fp=" + fp + "&type=ws&allowInsecure=0&sni=" + host + userFrag + "#" + encodeURIComponent(remark));
 			});
 		});
 		const noise = ["# System Update Feed: OK", "# Sync Code: " + Math.random().toString(36).slice(2, 10), "# Version: 2.10.1", "# Description: Secure Node Configurations", ""].join("\n");
@@ -972,7 +931,7 @@ async function flushExpiredTraffic(env) {
 		}
 	}
 }
-async function handleVLESS(env, storedData = null, ctx = null, request = null) {
+async function handlevIees(env, storedData = null, ctx = null, request = null) {
 	const clientIP = request ? request.headers.get("CF-Connecting-IP") || "unknown" : "unknown";
 	const socketPair = new WebSocketPair();
 	const [clientSock, serverSock] = Object.values(socketPair);
@@ -1239,7 +1198,7 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 			} catch (e) {}
 			closeSocketQuietly(serverSock);
 		},
-		name: "VlessWSQueue",
+		name: "vIeesWSQueue",
 	});
 	const writeToRemote = async (chunk, allowRetry = true) => {
 		return upstreamQueue.writeAndAwait(chunk, allowRetry);
@@ -1248,7 +1207,7 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 		const bytes = chunk.byteLength || 0;
 		await addBytes(bytes);
 		if (isDnsQuery) {
-			await forwardVlessUDP(chunk, serverSock, null, addBytes, targetDns);
+			await forwardvIeesUDP(chunk, serverSock, null, addBytes, targetDns);
 			return;
 		}
 		if (await writeToRemote(chunk)) return;
@@ -1257,7 +1216,7 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 			if (chunkBuffer.byteLength < 24) return;
 			if (isHeaderParsing) return;
 			isHeaderParsing = true;
-			reqUUID = extractUUIDFromVless(chunkBuffer);
+			reqUUID = extractUUIDFromvIees(chunkBuffer);
 			if (!reqUUID) {
 				serverSock.close();
 				return;
@@ -1315,7 +1274,7 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 				targetDoh = "https://dns.adguard-dns.com/dns-query";
 			}
 			if (clientIP && clientIP !== "unknown") {
-				console.log(`[VLESS Handshake] User: ${user.username}, clientIP: ${clientIP}, active_ips in DB: ${user.active_ips}`);
+				console.log(`[vIees Handshake] User: ${user.username}, clientIP: ${clientIP}, active_ips in DB: ${user.active_ips}`);
 				let activeIps = {};
 				try {
 					activeIps = JSON.parse(user.active_ips || "{}");
@@ -1333,9 +1292,9 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 						const tB = activeIps[b] && typeof activeIps[b] === "object" ? activeIps[b].timestamp : activeIps[b];
 						return tB - tA;
 					});
-					console.log(`[VLESS Handshake] Non-expired active IPs: ${JSON.stringify(activeIps)}, count: ${sortedIps.length}, limit: ${user.ip_limit}`);
+					console.log(`[vIees Handshake] Non-expired active IPs: ${JSON.stringify(activeIps)}, count: ${sortedIps.length}, limit: ${user.ip_limit}`);
 					if (user.ip_limit && user.ip_limit > 0 && sortedIps.length >= user.ip_limit) {
-						console.log(`[VLESS Handshake] BLOCKED user ${user.username} because sortedIps.length (${sortedIps.length}) >= limit (${user.ip_limit})`);
+						console.log(`[vIees Handshake] BLOCKED user ${user.username} because sortedIps.length (${sortedIps.length}) >= limit (${user.ip_limit})`);
 						serverSock.close();
 						return;
 					}
@@ -1347,13 +1306,13 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 					} else {
 						activeIps[clientIP] = { timestamp: now, count: 1 };
 					}
-					console.log(`[VLESS Handshake] Reconnected from same IP: ${clientIP}, count: ${activeIps[clientIP].count}`);
+					console.log(`[vIees Handshake] Reconnected from same IP: ${clientIP}, count: ${activeIps[clientIP].count}`);
 				}
 				try {
 					await env.DB.prepare("UPDATE users SET active_ips = ?, last_active = ? WHERE uuid = ?").bind(JSON.stringify(activeIps), now, reqUUID).run();
-					console.log(`[VLESS Handshake] Successfully updated active_ips to: ${JSON.stringify(activeIps)}`);
+					console.log(`[vIees Handshake] Successfully updated active_ips to: ${JSON.stringify(activeIps)}`);
 				} catch (e) {
-					console.error(`[VLESS Handshake] DB Update Error: ${e.message}`);
+					console.error(`[vIees Handshake] DB Update Error: ${e.message}`);
 				}
 			}
 			isHeaderParsed = true;
@@ -1407,7 +1366,7 @@ async function handleVLESS(env, storedData = null, ctx = null, request = null) {
 				if (cmd === 2) {
 					if (port === 53) {
 						isDnsQuery = true;
-						await forwardVlessUDP(rawData, serverSock, respHeader, addBytes, targetDns);
+						await forwardvIeesUDP(rawData, serverSock, respHeader, addBytes, targetDns);
 					} else {
 						serverSock.close();
 					}
@@ -2134,11 +2093,11 @@ async function connectDirect(address, port, initialData = null, targetDoh = "htt
 		}
 	}
 }
-async function forwardVlessUDP(udpChunk, webSocket, respHeader, onBytes, dnsServer = "8.8.4.4") {
+async function forwardvIeesUDP(udpChunk, webSocket, respHeader, onBytes, dnsServer = "8.8.4.4") {
 	const requestData = convertToUint8Array(udpChunk);
 	try {
 		const tcpSocket = connect({ hostname: dnsServer, port: 53 });
-		let vlessHeader = respHeader;
+		let vIeesHeader = respHeader;
 		const writer = tcpSocket.writable.getWriter();
 		await writer.write(requestData);
 		writer.releaseLock();
@@ -2148,12 +2107,12 @@ async function forwardVlessUDP(udpChunk, webSocket, respHeader, onBytes, dnsServ
 					const response = convertToUint8Array(chunk);
 					if (typeof onBytes === "function") onBytes(response.byteLength);
 					if (webSocket.readyState !== WebSocket.OPEN) return;
-					if (vlessHeader) {
-						const merged = new Uint8Array(vlessHeader.length + response.byteLength);
-						merged.set(vlessHeader, 0);
-						merged.set(response, vlessHeader.length);
+					if (vIeesHeader) {
+						const merged = new Uint8Array(vIeesHeader.length + response.byteLength);
+						merged.set(vIeesHeader, 0);
+						merged.set(response, vIeesHeader.length);
 						webSocket.send(merged.buffer);
-						vlessHeader = null;
+						vIeesHeader = null;
 					} else {
 						webSocket.send(response);
 					}
@@ -2162,7 +2121,7 @@ async function forwardVlessUDP(udpChunk, webSocket, respHeader, onBytes, dnsServ
 		);
 	} catch (e) {}
 }
-function extractUUIDFromVless(data) {
+function extractUUIDFromvIees(data) {
 	if (data.byteLength < 17) return null;
 	const hex = [...data.slice(1, 17)].map((b) => b.toString(16).padStart(2, "0")).join("");
 	return `${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}`;
@@ -2209,13 +2168,9 @@ async function connectProxy(proxyStr, destAddr, destPort, initialData) {
 	}
 	return await connectSocks5(cleanStr, destAddr, destPort, initialData);
 }
-async function connectSocks5(socksStr, destAddr, destPort, initialData) {
-	let user = "",
-		pass = "",
-		host = "",
-		port = 1080;
-	let auth = false;
-	let remain = socksStr;
+function parseProxyConfig(proxyStr, defaultPort) {
+	let user = "", pass = "", host = "", port = defaultPort;
+	let auth = false, remain = proxyStr;
 	if (remain.includes("@")) {
 		const atIdx = remain.lastIndexOf("@");
 		const authPart = remain.substring(0, atIdx);
@@ -2233,19 +2188,22 @@ async function connectSocks5(socksStr, destAddr, destPort, initialData) {
 		const closeIdx = remain.indexOf("]");
 		if (closeIdx !== -1) {
 			host = remain.substring(1, closeIdx);
-			if (remain.length > closeIdx + 1 && remain[closeIdx + 1] === ":") {
-				port = parseInt(remain.substring(closeIdx + 2)) || 1080;
-			}
+			if (remain.length > closeIdx + 1 && remain[closeIdx + 1] === ":") port = parseInt(remain.substring(closeIdx + 2)) || defaultPort;
 		}
 	} else {
 		const lastColon = remain.lastIndexOf(":");
 		if (lastColon !== -1 && remain.indexOf(":") === lastColon) {
 			host = remain.substring(0, lastColon);
-			port = parseInt(remain.substring(lastColon + 1)) || 1080;
+			port = parseInt(remain.substring(lastColon + 1)) || defaultPort;
 		} else {
 			host = remain;
 		}
 	}
+	return { user, pass, host, port, auth };
+}
+
+async function connectSocks5(socksStr, destAddr, destPort, initialData) {
+	const { user, pass, host, port, auth } = parseProxyConfig(socksStr, 1080);
 	const socket = connect({ hostname: host, port: port });
 	const reader = socket.readable.getReader();
 	const writer = socket.writable.getWriter();
@@ -2314,42 +2272,7 @@ async function connectSocks5(socksStr, destAddr, destPort, initialData) {
 	}
 }
 async function connectHttp(proxyStr, destAddr, destPort, initialData) {
-	let user = "",
-		pass = "",
-		host = "",
-		port = 80;
-	let auth = false;
-	let remain = proxyStr;
-	if (remain.includes("@")) {
-		const atIdx = remain.lastIndexOf("@");
-		const authPart = remain.substring(0, atIdx);
-		remain = remain.substring(atIdx + 1);
-		const colonIdx = authPart.indexOf(":");
-		if (colonIdx !== -1) {
-			user = authPart.substring(0, colonIdx);
-			pass = authPart.substring(colonIdx + 1);
-		} else {
-			user = authPart;
-		}
-		auth = true;
-	}
-	if (remain.startsWith("[")) {
-		const closeIdx = remain.indexOf("]");
-		if (closeIdx !== -1) {
-			host = remain.substring(1, closeIdx);
-			if (remain.length > closeIdx + 1 && remain[closeIdx + 1] === ":") {
-				port = parseInt(remain.substring(closeIdx + 2)) || 80;
-			}
-		}
-	} else {
-		const lastColon = remain.lastIndexOf(":");
-		if (lastColon !== -1 && remain.indexOf(":") === lastColon) {
-			host = remain.substring(0, lastColon);
-			port = parseInt(remain.substring(lastColon + 1)) || 80;
-		} else {
-			host = remain;
-		}
-	}
+	const { user, pass, host, port, auth } = parseProxyConfig(proxyStr, 80);
 	const socket = connect({ hostname: host, port: port });
 	const reader = socket.readable.getReader();
 	const writer = socket.writable.getWriter();
@@ -2395,6 +2318,51 @@ async function connectHttp(proxyStr, destAddr, destPort, initialData) {
 		throw e;
 	}
 }
+const COMMON_HEAD = `<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
+<script>
+	tailwind.config = {
+		darkMode: 'class',
+		theme: {
+			extend: {
+				fontFamily: { sans: ['Vazirmatn', 'sans-serif'] },
+				colors: { amoled: { bg: '#000105', card: '#040914', input: '#081224', border: '#102040' } }
+			}
+		}
+	}
+</script>`;
+
+const COMMON_TOAST_HTML = `<div id="toast-container" class="fixed top-5 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 pointer-events-none"></div>`;
+
+const COMMON_TOAST_JS = `
+		function showToast(message, type = 'success') {
+			const container = document.getElementById('toast-container');
+			const toast = document.createElement('div');
+			const colors = type === 'error' 
+				? 'bg-red-50 dark:bg-red-900/40 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400' 
+				: 'bg-green-50 dark:bg-green-900/40 border-green-200 dark:border-green-800 text-green-700 dark:text-green-500';
+			toast.className = 'px-4 py-3 border rounded-xl shadow-lg font-bold text-sm transform transition-all duration-300 -translate-y-full opacity-0 ' + colors;
+			toast.innerText = message;
+			container.appendChild(toast);
+			requestAnimationFrame(() => {
+				toast.classList.remove('-translate-y-full', 'opacity-0');
+			});
+			setTimeout(() => {
+				toast.classList.add('-translate-y-full', 'opacity-0');
+				setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+        window.alert = function(message) {
+            const msgStr = message ? message.toString() : '';
+            if (msgStr.includes('خطا') || msgStr.includes('⚠️') || msgStr.includes('❌')) {
+                showToast(msgStr, 'error');
+            } else {
+                showToast(msgStr, 'success');
+            }
+        };
+`;
+
 const HTML_TEMPLATES = {
 	nginx: `<!DOCTYPE html>
 <html lang="fa" dir="rtl" class="dark">
@@ -2402,19 +2370,7 @@ const HTML_TEMPLATES = {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>دسترسی به پنل</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    fontFamily: { sans: ['Vazirmatn', 'sans-serif'] },
-                    colors: { amoled: { bg: '#000000', card: '#080b0f', input: '#0d1117', border: '#1c2330' } }
-                }
-            }
-        }
-    </script>
+    ${COMMON_HEAD}
 </head>
 <body class="bg-gray-50 text-gray-900 dark:bg-amoled-bg dark:text-zinc-100 min-h-screen flex items-center justify-center p-4">
     <div class="w-full max-w-md bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-2xl shadow-xl p-8 text-center flex flex-col items-center gap-4">
@@ -2439,19 +2395,7 @@ const HTML_TEMPLATES = {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>تعریف رمز عبور پنل</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    fontFamily: { sans: ['Vazirmatn', 'sans-serif'] },
-                    colors: { amoled: { bg: '#000000', card: '#080b0f', input: '#0d1117', border: '#1c2330' } }
-                }
-            }
-        }
-    </script>
+    ${COMMON_HEAD}
 </head>
 <body class="bg-gray-50 text-gray-900 dark:bg-amoled-bg dark:text-zinc-100 min-h-screen flex items-center justify-center p-4">
     <div class="w-full max-w-md bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-2xl shadow-xl p-6">
@@ -2469,33 +2413,9 @@ const HTML_TEMPLATES = {
             <button type="submit" id="submit-btn" class="w-full py-2.5 bg-transparent border-2 border-green-600 text-green-700 hover:bg-green-900/20 hover:text-green-800 dark:border-green-500 dark:text-green-500 dark:hover:bg-green-900/40 dark:hover:text-green-400 font-medium rounded-lg text-sm transition font-bold">ثبت و ورود</button>
         </form>
     </div>
-    <div id="toast-container" class="fixed top-5 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 pointer-events-none"></div>
+    ${COMMON_TOAST_HTML}
     <script>
-        function showToast(message, type = 'success') {
-            const container = document.getElementById('toast-container');
-            const toast = document.createElement('div');
-            const colors = type === 'error' 
-                ? 'bg-red-50 dark:bg-red-900/40 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400' 
-                : 'bg-green-50 dark:bg-green-900/40 border-green-200 dark:border-green-800 text-green-700 dark:text-green-500';
-            toast.className = 'px-4 py-3 border rounded-xl shadow-lg font-bold text-sm transform transition-all duration-300 -translate-y-full opacity-0 ' + colors;
-            toast.innerText = message;
-            container.appendChild(toast);
-            requestAnimationFrame(() => {
-                toast.classList.remove('-translate-y-full', 'opacity-0');
-            });
-            setTimeout(() => {
-                toast.classList.add('-translate-y-full', 'opacity-0');
-                setTimeout(() => toast.remove(), 300);
-            }, 3000);
-        }
-        window.alert = function(message) {
-            const msgStr = message ? message.toString() : '';
-            if (msgStr.includes('خطا') || msgStr.includes('⚠️') || msgStr.includes('❌')) {
-                showToast(msgStr, 'error');
-            } else {
-                showToast(msgStr, 'success');
-            }
-        };
+        ${COMMON_TOAST_JS};
         async function handleSetup(event) {
             event.preventDefault();
             const password = document.getElementById('password').value;
@@ -2538,19 +2458,7 @@ const HTML_TEMPLATES = {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ورود به پنل مدیریت</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    fontFamily: { sans: ['Vazirmatn', 'sans-serif'] },
-                    colors: { amoled: { bg: '#000000', card: '#080b0f', input: '#0d1117', border: '#1c2330' } }
-                }
-            }
-        }
-    </script>
+    ${COMMON_HEAD}
 </head>
 <body class="bg-gray-50 text-gray-900 dark:bg-amoled-bg dark:text-zinc-100 min-h-screen flex items-center justify-center p-4">
     <div class="w-full max-w-md bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-2xl shadow-xl p-6">
@@ -2587,33 +2495,9 @@ const HTML_TEMPLATES = {
             </form>
         </div>
     </div>
-    <div id="toast-container" class="fixed top-5 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 pointer-events-none"></div>
+    ${COMMON_TOAST_HTML}
     <script>
-        function showToast(message, type = 'success') {
-            const container = document.getElementById('toast-container');
-            const toast = document.createElement('div');
-            const colors = type === 'error' 
-                ? 'bg-red-50 dark:bg-red-900/40 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400' 
-                : 'bg-green-50 dark:bg-green-900/40 border-green-200 dark:border-green-800 text-green-700 dark:text-green-500';
-            toast.className = 'px-4 py-3 border rounded-xl shadow-lg font-bold text-sm transform transition-all duration-300 -translate-y-full opacity-0 ' + colors;
-            toast.innerText = message;
-            container.appendChild(toast);
-            requestAnimationFrame(() => {
-                toast.classList.remove('-translate-y-full', 'opacity-0');
-            });
-            setTimeout(() => {
-                toast.classList.add('-translate-y-full', 'opacity-0');
-                setTimeout(() => toast.remove(), 300);
-            }, 3000);
-        }
-        window.alert = function(message) {
-            const msgStr = message ? message.toString() : '';
-            if (msgStr.includes('خطا') || msgStr.includes('⚠️') || msgStr.includes('❌')) {
-                showToast(msgStr, 'error');
-            } else {
-                showToast(msgStr, 'success');
-            }
-        };
+        ${COMMON_TOAST_JS}
         async function handleLogin(event) {
             event.preventDefault();
             const password = document.getElementById('password').value;
@@ -2678,7 +2562,7 @@ const HTML_TEMPLATES = {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ZEUS Panel</title>
+    <title>Z E U S</title>
     <script>
         const originalWarn = console.warn;
         console.warn = (...args) => {
@@ -2686,20 +2570,7 @@ const HTML_TEMPLATES = {
             originalWarn(...args);
         };
     </script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    fontFamily: { sans: ['Vazirmatn', 'sans-serif'] },
-                    colors: { amoled: { bg: '#000000', card: '#080b0f', input: '#0d1117', border: '#1c2330' } }
-                }
-            }
-        }
-    </script>
+    ${COMMON_HEAD}
     <style>
         body { font-family: 'Vazirmatn', sans-serif; }
 		.dark input[type="checkbox"] {
@@ -2721,20 +2592,20 @@ const HTML_TEMPLATES = {
             background: #9ca3af;
         }
         .dark ::-webkit-scrollbar-track {
-            background: #080b0f; 
+            background: #000105; 
         }
         .dark ::-webkit-scrollbar-thumb {
-            background: #1c2330; 
+            background: #102040; 
         }
         .dark ::-webkit-scrollbar-thumb:hover {
-            background: #2d3748;
+            background: #172e5c;
         }
         * {
             scrollbar-width: thin;
             scrollbar-color: #d1d5db #f3f4f6;
         }
         .dark * {
-            scrollbar-color: #1c2330 #080b0f;
+            scrollbar-color: #102040 #000105;
         }
         @media (min-width: 769px) {
             header, main { zoom: 1.18; }
@@ -2757,7 +2628,7 @@ const HTML_TEMPLATES = {
         <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
             <div class="flex flex-row flex-wrap justify-center items-center gap-3 w-full md:w-auto">
                 <h1 class="text-lg font-bold flex items-center gap-2" dir="ltr">
-                    ZEUS Panel 
+                    Z E U S
                     <span id="panel-version" class="text-xs px-2 py-0.5 font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 rounded-full">v1.5.10</span>
                 </h1>
                 <div class="flex items-center gap-3 bg-gray-100 dark:bg-zinc-800/60 px-3 py-1.5 rounded-full border border-gray-200 dark:border-zinc-800/80 shadow-sm flex-shrink-0 w-fit">
@@ -2766,7 +2637,7 @@ const HTML_TEMPLATES = {
                             <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
                         </svg>
                     </a>
-                    <a href="https://t.me/ZEUS_PANEL_BOT" target="_blank" rel="noopener noreferrer" class="text-sky-500 hover:text-sky-600 dark:hover:text-sky-400 transition-all transform hover:scale-125 duration-200 flex-shrink-0" title="Telegram">
+                    <a href="https://t.me/PANEL_ZEUS" target="_blank" rel="noopener noreferrer" class="text-sky-500 hover:text-sky-600 dark:hover:text-sky-400 transition-all transform hover:scale-125 duration-200 flex-shrink-0" title="Telegram">
                         <svg class="w-[22px] h-[22px] flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.94-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.37.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .24z"/>
                         </svg>
@@ -2856,7 +2727,7 @@ const HTML_TEMPLATES = {
         </div>
     </header>
     <main class="max-w-6xl mx-auto px-4 py-8 pb-56 md:pb-32">
-<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
     <div class="bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-xl p-2.5 shadow-sm flex flex-col justify-center gap-1 hover:shadow-md hover:border-indigo-400 dark:hover:border-indigo-500/50 transition duration-300 relative overflow-hidden group min-h-[64px]">
         <div class="absolute -right-4 -bottom-4 w-16 h-16 bg-indigo-500/10 rounded-full blur-xl group-hover:scale-150 transition duration-500"></div>
         <div class="flex items-center justify-between relative z-10">
@@ -2925,7 +2796,7 @@ const HTML_TEMPLATES = {
             <div class="text-lg font-black text-blue-600 dark:text-blue-400 transition-all whitespace-nowrap leading-none" id="stat-total-usage">0 GB</div>
             <span class="text-[9px] text-blue-500 dark:text-blue-400 flex items-center gap-0.5 font-medium whitespace-nowrap leading-none mb-0.5">
                 <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path></svg>
-                مصرف کل کاربران
+                مجموع
             </span>
         </div>
     </div>
@@ -2986,20 +2857,7 @@ const HTML_TEMPLATES = {
             <p class="text-red-600 dark:text-red-400 font-bold text-lg">کاربری وجود ندارد. برای ساخت اولین کاربر روی دکمه « + » کلیک کنید.</p>
         </div>
     </main>
-<div id="path-warning-modal" class="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm opacity-0 pointer-events-none transition-all duration-300 ease-out">
-    <div class="w-full max-w-md bg-white dark:bg-amoled-card border border-red-500/50 rounded-3xl shadow-2xl overflow-hidden p-6 text-center transition-all transform duration-300 opacity-0 scale-95 ease-out">
-        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 text-red-500 mb-4 shadow-inner">
-            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-        </div>
-        <h3 class="font-black text-xl text-gray-900 dark:text-white mb-2">تغییر مهم در ساختار کانفیگ‌ها</h3>
-        <p class="text-sm text-gray-600 dark:text-gray-400 mb-6 leading-relaxed font-medium">
-            به دلیل شناسایی پروژه توسط کلودفلر و مسدود شدن نسخه های قبلی، کانفیگ‌های قبل از نسخه 1.7.6 غیرفعال شده‌اند. درصورت عدم اتصال لطفاً ساب خود را بروزرسانی کنید .
-        </p>
-        <button onclick="closePathWarning()" class="w-full py-3.5 bg-transparent border-2 border-green-600 text-green-700 hover:bg-green-900/20 hover:text-green-800 dark:border-green-500 dark:text-green-500 dark:hover:bg-green-900/40 dark:hover:text-green-400 font-black rounded-xl text-sm transition duration-300 shadow-lg">
-            متوجه شدم، کانفیگ‌های جدید را می‌گیرم 
-        </button>
-    </div>
-</div>
+
 <div id="usage-warning-modal" class="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm opacity-0 pointer-events-none transition-all duration-300 ease-out">
     <div class="w-full max-w-md bg-white dark:bg-amoled-card border border-orange-500/50 rounded-3xl shadow-2xl overflow-hidden p-6 text-center transition-all transform duration-300 opacity-0 scale-95 ease-out">
         <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-500 mb-4 shadow-inner">
@@ -3021,7 +2879,7 @@ const HTML_TEMPLATES = {
         </div>
         <h3 class="font-black text-xl text-gray-900 dark:text-white mb-2">پیام همگانی</h3>
         <p class="text-sm text-gray-600 dark:text-gray-400 mb-6 leading-relaxed font-medium">
-            این پنل کاملاً <span class="text-rose-500 font-bold">رایگان</span> است. هرگونه فروش پنل یا کانفیگ‌های آن مصداق کلاه‌برداری و رفتاری دور از انسانیت و شرافت است. لطفاً از این ابزار فقط به صورت شخصی و رایگان استفاده کنید.
+            این پنل کاملاً <span class="text-rose-500 font-bold">رایگان</span> است. هرگونه فروش پنل یا کـانفـیگ‌های آن مصداق کلاه‌برداری و رفتاری دور از انسانیت و شرافت است. لطفاً از این ابزار فقط به صورت شخصی و رایگان استفاده کنید.
         </p>
         <button onclick="closeFreePanelWarning()" class="w-full py-3.5 bg-transparent border-2 border-green-800 text-green-900 hover:bg-green-800 hover:text-white dark:border-green-800 dark:text-green-700 dark:hover:bg-green-900 dark:hover:text-white font-black rounded-xl text-sm transition duration-300 shadow-lg">
             تأیید و موافقت
@@ -3042,8 +2900,8 @@ const HTML_TEMPLATES = {
     </div>
 </div>
     <div id="user-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 opacity-0 pointer-events-none transition-opacity duration-200 ease-out">
-        <div id="user-modal-card" class="w-full max-w-xl bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-xl overflow-hidden transition-[opacity,transform] duration-200 opacity-0 scale-95 ease-out flex flex-col max-h-[90vh] transform-gpu" style="will-change: transform, opacity;">
-            <div class="px-6 py-4 border-b border-gray-150 dark:border-zinc-800/80 flex justify-between items-center bg-gray-50/50 dark:bg-zinc-900/30">
+        <div id="user-modal-card" class="w-full max-w-xl bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-2xl shadow-xl overflow-hidden transition-[opacity,transform] duration-200 opacity-0 scale-95 ease-out flex flex-col max-h-[90vh] transform-gpu" style="will-change: transform, opacity;">
+            <div class="px-6 py-4 border-b border-gray-150 dark:border-amoled-border flex justify-between items-center bg-gray-50/50 dark:bg-amoled-bg">
                 <div class="flex items-center gap-2">
                     <div class="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
                     <h3 id="modal-title" class="font-bold text-gray-900 dark:text-zinc-100 text-base">ایجاد کاربر جدید</h3>
@@ -3052,7 +2910,7 @@ const HTML_TEMPLATES = {
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
             </div>
-            <form id="create-user-form" class="p-6 space-y-5 overflow-y-auto flex-1 overscroll-contain" style="-webkit-overflow-scrolling: touch; transform: translate3d(0,0,0); will-change: scroll-position, transform;" onsubmit="handleFormSubmit(event)">
+            <form id="create-user-form" class="p-4 space-y-2 overflow-y-auto flex-1 overscroll-contain" style="-webkit-overflow-scrolling: touch; transform: translate3d(0,0,0); will-change: scroll-position, transform;" onsubmit="handleFormSubmit(event)">
 				<input type="hidden" id="hidden-auto-rotate" value="0">
 				<input type="hidden" id="hidden-rotate-time" value="">
 				<input type="hidden" id="hidden-ip-operator" value="all">
@@ -3064,7 +2922,7 @@ const HTML_TEMPLATES = {
                             <span class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
                             </span>
-                            <input type="text" id="input-name" placeholder="PANEL_ZEUS" maxlength="32" class="w-full pl-3 pr-9 py-1.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-semibold text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition" required>
+                            <input type="text" id="input-name" placeholder="PANEL_ZEUS" maxlength="32" class="w-full pl-3 pr-9 py-1.5 bg-gray-50 dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-semibold text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition" required>
                         </div>
                     </div>
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
@@ -3074,7 +2932,7 @@ const HTML_TEMPLATES = {
                                 <span class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
                                 </span>
-                                <input type="number" id="input-limit" min="0" step="any" placeholder="نامحدود" class="w-full pl-3 pr-9 py-1.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-semibold text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition">
+                                <input type="number" id="input-limit" min="0" step="any" placeholder="نامحدود" class="w-full pl-3 pr-9 py-1.5 bg-gray-50 dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-semibold text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition">
                             </div>
                         </div>
                         <div>
@@ -3083,7 +2941,7 @@ const HTML_TEMPLATES = {
                                 <span class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                                 </span>
-                                <input type="number" id="input-expiry" min="0" placeholder="نامحدود" class="w-full pl-3 pr-9 py-1.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-semibold text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition">
+                                <input type="number" id="input-expiry" min="0" placeholder="نامحدود" class="w-full pl-3 pr-9 py-1.5 bg-gray-50 dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-semibold text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition">
                             </div>
                         </div>
                         <div>
@@ -3092,7 +2950,7 @@ const HTML_TEMPLATES = {
                                 <span class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                                 </span>
-                                <input type="number" id="input-req-limit" min="0" placeholder="نامحدود" class="w-full pl-3 pr-9 py-1.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-semibold text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition">
+                                <input type="number" id="input-req-limit" min="0" placeholder="نامحدود" class="w-full pl-3 pr-9 py-1.5 bg-gray-50 dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-semibold text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition">
                             </div>
                         </div>
                         <div>
@@ -3101,12 +2959,12 @@ const HTML_TEMPLATES = {
                                 <span class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
                                 </span>
-                                <input type="number" id="input-ip-limit" min="0" placeholder="نامحدود" class="w-full pl-3 pr-9 py-1.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-semibold text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition">
+                                <input type="number" id="input-ip-limit" min="0" placeholder="نامحدود" class="w-full pl-3 pr-9 py-1.5 bg-gray-50 dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-semibold text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition">
                             </div>
                         </div>
                     </div>
                 </div>
-				<div class="flex flex-col gap-3 border border-gray-100 dark:border-zinc-900 p-3 rounded-xl bg-gray-50/20 dark:bg-zinc-900/10 mt-4">
+				<div class="flex flex-col gap-3 border border-gray-100 dark:border-amoled-border p-3 rounded-xl bg-gray-50 dark:bg-amoled-input mt-4">
 					<div class="flex items-center justify-between">
 						<div class="flex items-center gap-2">
 							<svg class="w-4 h-4 text-gray-500 dark:text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
@@ -3117,19 +2975,19 @@ const HTML_TEMPLATES = {
 							<div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:bg-green-600 transition-colors after:content-[''] after:absolute after:top-[2px] after:right-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-transform peer-checked:after:-translate-x-[18px]"></div>
 						</label>
 					</div>
-					<div id="auto-reset-inputs-container" class="grid grid-cols-2 gap-2 hidden transition-all duration-300 pt-2 border-t border-gray-100 dark:border-zinc-800">
+					<div id="auto-reset-inputs-container" class="grid grid-cols-2 gap-2 hidden transition-all duration-300 pt-2 border-t border-gray-100 dark:border-amoled-border">
 						<div>
 							<label class="block text-[10px] font-bold text-gray-500 dark:text-zinc-400 mb-1 uppercase tracking-wider">زمان ریست حجم (روز)</label>
-							<input type="number" id="input-auto-reset-vol" min="1" placeholder="1" class="w-full px-2 py-1.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-mono text-center text-gray-800 dark:text-zinc-100 transition" dir="ltr">
+							<input type="number" id="input-auto-reset-vol" min="1" placeholder="1" class="w-full px-2 py-1.5 bg-gray-50 dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-mono text-center text-gray-800 dark:text-zinc-100 transition" dir="ltr">
 						</div>
 						<div>
 							<label class="block text-[10px] font-bold text-gray-500 dark:text-zinc-400 mb-1 uppercase tracking-wider">زمان ریست ریکوئست (روز)</label>
-							<input type="number" id="input-auto-reset-req" min="1" placeholder="1" class="w-full px-2 py-1.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-mono text-center text-gray-800 dark:text-zinc-100 transition" dir="ltr">
+							<input type="number" id="input-auto-reset-req" min="1" placeholder="1" class="w-full px-2 py-1.5 bg-gray-50 dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-mono text-center text-gray-800 dark:text-zinc-100 transition" dir="ltr">
 						</div>
 					</div>
 				</div>
 <div class="grid grid-cols-2 gap-3 mt-4">
-    <div class="p-3 bg-gray-50/50 dark:bg-zinc-900/20 border border-gray-200/60 dark:border-zinc-800 rounded-2xl shadow-sm">
+    <div class="p-3 bg-gray-50 dark:bg-amoled-input border border-gray-200/60 dark:border-amoled-border rounded-2xl shadow-sm">
         <div class="flex items-center justify-between mb-2">
             <span class="text-[10px] font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider">Fragment</span>
             <label class="relative inline-flex items-center cursor-pointer select-none">
@@ -3138,14 +2996,14 @@ const HTML_TEMPLATES = {
             </label>
         </div>
         <div id="frag-inputs-container" class="grid grid-cols-2 gap-1.5 transition-all duration-300">
-            <input type="text" id="input-frag-len" placeholder="Len" value="200-3000" dir="ltr" class="w-full px-1.5 py-1 bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-[10px] font-mono text-center text-gray-800 dark:text-zinc-100">
-            <input type="text" id="input-frag-int" placeholder="Int" value="1-2" dir="ltr" class="w-full px-1.5 py-1 bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-[10px] font-mono text-center text-gray-800 dark:text-zinc-100">
+            <input type="text" id="input-frag-len" placeholder="Len" value="200-3000" dir="ltr" class="w-full px-1.5 py-1 bg-white dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-[10px] font-mono text-center text-gray-800 dark:text-zinc-100">
+            <input type="text" id="input-frag-int" placeholder="Int" value="1-2" dir="ltr" class="w-full px-1.5 py-1 bg-white dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-[10px] font-mono text-center text-gray-800 dark:text-zinc-100">
         </div>
     </div>
-    <div class="p-3 bg-gray-50/50 dark:bg-zinc-900/20 border border-gray-200/60 dark:border-zinc-800 rounded-2xl shadow-sm">
+    <div class="p-3 bg-gray-50 dark:bg-amoled-input border border-gray-200/60 dark:border-amoled-border rounded-2xl shadow-sm">
         <label class="block text-[10px] font-bold text-gray-500 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">Fingerprint</label>
         <div class="relative">
-            <select id="fingerprint-select" class="w-full px-2 py-1.5 bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 text-[10px] font-semibold text-gray-700 dark:text-zinc-300 cursor-pointer appearance-none">
+            <select id="fingerprint-select" class="w-full px-2 py-1.5 bg-white dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 text-[10px] font-semibold text-gray-700 dark:text-zinc-300 cursor-pointer appearance-none">
                 <option value="chrome">🌐 Chrome</option>
 				<option value="firefox">🦊 Firefox</option>
 				<option value="safari">🧭 Safari</option>
@@ -3164,14 +3022,14 @@ const HTML_TEMPLATES = {
     </div>
 </div>
 						<div class="grid grid-cols-2 gap-2 mt-2">
-    						<div class="flex items-center justify-between bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl p-1.5 shadow-sm">
+    						<div class="flex items-center justify-between bg-gray-50 dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-xl p-1.5 shadow-sm">
     						    <span class="text-[10px] sm:text-xs font-semibold text-gray-700 dark:text-zinc-300 whitespace-nowrap pl-1">NSFW blocker</span>
     						    <label class="relative inline-flex items-center cursor-pointer scale-[0.65] sm:scale-75 origin-left">
     						        <input type="checkbox" id="input-block-porn" class="sr-only peer">
     						        <div class="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:right-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-700"></div>
     						    </label>
     						</div>
-    						<div class="flex items-center justify-between bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl p-1.5 shadow-sm">
+    						<div class="flex items-center justify-between bg-gray-50 dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-xl p-1.5 shadow-sm">
     						    <span class="text-[10px] sm:text-xs font-semibold text-gray-700 dark:text-zinc-300 whitespace-nowrap pl-1">ADS blocker</span>
     						    <label class="relative inline-flex items-center cursor-pointer scale-[0.65] sm:scale-75 origin-left">
     						        <input type="checkbox" id="input-block-ads" class="sr-only peer">
@@ -3179,10 +3037,10 @@ const HTML_TEMPLATES = {
     						    </label>
     						</div>
 						</div>
-<div class="pt-2 border-t border-gray-100 dark:border-zinc-900">
+<div class="pt-2 border-t-2 border-gray-300 dark:border-amoled-border">
     <label class="block text-xs font-bold text-gray-500 dark:text-zinc-400 mb-3 uppercase tracking-wider">پورت‌های اتصال</label>
     <div class="grid grid-cols-2 gap-2 md:gap-4">
-        <div class="p-3 bg-gray-50/50 dark:bg-zinc-900/20 border border-gray-200/60 dark:border-zinc-800 rounded-2xl shadow-sm">
+        <div class="p-3 bg-gray-50 dark:bg-amoled-input border border-gray-200/60 dark:border-amoled-border rounded-2xl shadow-sm">
             <div class="flex items-center gap-1.5 mb-2">
                 <span class="flex h-2 w-2 rounded-full bg-blue-500 shadow-sm"></span>
                 <span class="text-[11px] font-bold text-blue-600 dark:text-blue-400">🔒TLS PORT</span>
@@ -3190,7 +3048,7 @@ const HTML_TEMPLATES = {
             <div class="grid grid-cols-3 gap-1.5" id="tls-ports-list">
             </div>
         </div>
-        <div class="p-3 bg-gray-50/50 dark:bg-zinc-900/20 border border-gray-200/60 dark:border-zinc-800 rounded-2xl shadow-sm">
+        <div class="p-3 bg-gray-50 dark:bg-amoled-input border border-gray-200/60 dark:border-amoled-border rounded-2xl shadow-sm">
             <div class="flex items-center gap-1.5 mb-2">
                 <span class="flex h-2 w-2 rounded-full bg-amber-500 shadow-sm"></span>
                 <span class="text-[11px] font-bold text-amber-600 dark:text-amber-400">🔓Non-TLS PORT</span>
@@ -3199,15 +3057,15 @@ const HTML_TEMPLATES = {
             </div>
         </div>
     </div>
-    <div class="mt-4 p-3 bg-gray-50/50 dark:bg-zinc-900/20 border border-gray-200/60 dark:border-zinc-800 rounded-2xl shadow-sm">
+    <div class="mt-4 p-3 bg-gray-50 dark:bg-amoled-input border border-gray-200/60 dark:border-amoled-border rounded-2xl shadow-sm">
         <div class="flex items-center gap-1.5 mb-2">
             <span class="flex h-2 w-2 rounded-full bg-green-600 shadow-sm"></span>
             <span class="text-[11px] font-bold text-green-700 dark:text-green-500">⚙️ پورت‌های دلخواه (با فاصله جدا کنید)</span>
         </div>
-        <input type="text" id="input-custom-ports" placeholder="8080 2096 5000" dir="ltr" class="w-full px-2 py-2 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-mono text-left text-gray-800 dark:text-zinc-100 transition">
+        <input type="text" id="input-custom-ports" placeholder="8080 2096 5000" dir="ltr" class="w-full px-2 py-2 bg-white dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-mono text-left text-gray-800 dark:text-zinc-100 transition">
     </div>
 </div>
-                <div class="pt-4 border-t border-gray-100 dark:border-zinc-900 space-y-4">
+                <div class="pt-4 border-t-2 border-gray-300 dark:border-amoled-border space-y-4">
 					<div>
     					<div class="flex items-center justify-between mb-2">
         					<label class="block text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider">آیپی تمیز (توصیه میشود)</label>
@@ -3218,11 +3076,11 @@ const HTML_TEMPLATES = {
   								مخزن آیپی تمیز
 							</button>
     					</div>
-    					<textarea id="input-ips" rows="2" placeholder="104.16.0.1" class="w-full px-3 py-2.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-mono text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition resize-none"></textarea>
+    					<textarea id="input-ips" rows="2" placeholder="104.16.0.1" class="w-full px-3 py-2.5 bg-gray-50 dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-mono text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition resize-none"></textarea>
 					</div>
-                    <div class="mt-4 pt-4 border-t border-gray-150 dark:border-zinc-900 space-y-4">
+                    <div class="mt-4 pt-4 border-t-2 border-gray-300 dark:border-amoled-border space-y-4">
                         <div>
-                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 border-b border-gray-100 dark:border-zinc-800/30 pb-3">
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 border-b border-gray-100 dark:border-amoled-border pb-3">
 	                            <div class="flex items-center gap-2 min-w-0">
 	                            	<label class="relative inline-flex items-center cursor-pointer select-none flex-shrink-0">
 	                            		<input type="checkbox" id="user-proxy-mode-toggle" onchange="toggleUserProxyMode(this.checked)" class="sr-only peer">
@@ -3236,7 +3094,7 @@ const HTML_TEMPLATES = {
 	                            </div>
                             </div>
                             <div class="relative transition-opacity duration-300 opacity-50 pointer-events-none" id="user-socks5-container">
-                                <input type="text" id="user-socks5-input" placeholder="socks5:// یا http:// یا (user:pass@ip:port)" dir="ltr" class="w-full px-3 py-2.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 dark:text-zinc-100 transition" disabled>
+                                <input type="text" id="user-socks5-input" placeholder="socks5:// یا http:// یا (user:pass@ip:port)" dir="ltr" class="w-full px-3 py-2.5 bg-gray-50 dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 dark:text-zinc-100 transition" disabled>
                                 <div class="w-full text-center">
                                     <span id="test-user-proxy-result" class="inline-block mt-2 text-[11px] font-bold transition-colors break-words leading-relaxed empty:hidden"></span>
                                 </div>
@@ -3245,17 +3103,17 @@ const HTML_TEMPLATES = {
                                     <button type="button" onclick="openProxySelectorModal()" class="flex-1 text-center text-[11px] bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 py-1.5 rounded border border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition font-bold shadow-sm">مخزن پروکسی</button>
                                 </div>
                                 <div class="mt-3 p-3 border-2 border-dashed border-red-400 dark:border-red-500/70 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-xl text-[11px] font-bold leading-relaxed text-center w-full">
-									پروکسی‌های عمومی ناپایدارند. برای کیفیت بالاتر، از دکمه <span class="text-blue-600 dark:text-blue-400 font-black">«ساخت پروکسی شخصی»</span> استفاده کنید.
+										پروکسی‌های عمومی ناپایدارند. برای کیفیت بالاتر از <span class="text-amber-600 dark:text-amber-400 font-black">«مخزن پروکسی»</span> یا از دکمه <span class="text-blue-600 dark:text-blue-400 font-black">«ساخت پروکسی شخصی»</span> استفاده کنید.
 								</div>
                             </div>
                         </div>
-                        <div id="user-cf-proxy-section" class="transition-opacity duration-300 pt-4 border-t-2 border-gray-200 dark:border-zinc-800">
+                        <div id="user-cf-proxy-section" class="transition-opacity duration-300 pt-5 border-t-2 border-gray-300 dark:border-amoled-border">
                             <label class="block text-sm font-medium mb-1.5 text-gray-700 dark:text-zinc-300">ثابت کردن کشور (Cloudflare)</label>
                             <div class="mb-2">
-                                <input type="text" id="user-location-search" oninput="filterUserLocations()" placeholder="جستجوی شهر، کشور یا IATA" class="w-full px-3 py-2 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-lg shadow-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700 dark:text-zinc-200 transition">
+                                <input type="text" id="user-location-search" oninput="filterUserLocations()" placeholder="جستجوی شهر، کشور یا IATA" class="w-full px-3 py-2 bg-gray-50 dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-lg shadow-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700 dark:text-zinc-200 transition">
                             </div>
                             <div class="relative">
-                                <select id="user-location-select" class="w-full pl-8 pr-3 py-2.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-lg shadow-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700 dark:text-zinc-200 cursor-pointer appearance-none">
+                                <select id="user-location-select" class="w-full pl-8 pr-3 py-2.5 bg-gray-50 dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-lg shadow-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700 dark:text-zinc-200 cursor-pointer appearance-none">
                                     <option value="">بدون لوکیشن (پیش‌فرض)</option>
                                 </select>
                                 <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500 dark:text-zinc-400">
@@ -3441,10 +3299,10 @@ const HTML_TEMPLATES = {
                 <div class="pt-4 border-t-2 border-gray-300 dark:border-zinc-700">
                     <h4 class="text-sm font-bold mb-3 text-gray-800 dark:text-zinc-200">💾 پشتیبان‌گیری و بازیابی</h4>
                     <div class="grid grid-cols-2 gap-3">
-                        <button type="button" onclick="exportUsersBackup()" class="py-2.5 bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-900/50 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm">
+                        <button type="button" onclick="exportUsersBackup()" class="py-2.5 bg-transparent border-2 border-orange-500 text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:border-orange-500/60 dark:hover:bg-orange-500/10 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm">
                             📤 پشتیبان گیری
                         </button>
-                        <button type="button" onclick="triggerImportBackup()" class="py-2.5 bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-500 hover:bg-green-100 dark:hover:bg-green-900/30 border border-green-200 dark:border-green-900/50 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm">
+                        <button type="button" onclick="triggerImportBackup()" class="py-2.5 bg-transparent border-2 border-blue-500 text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-500/60 dark:hover:bg-blue-500/10 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm">
                             📥 بازیابی
                         </button>
                     </div>
@@ -3479,7 +3337,7 @@ const HTML_TEMPLATES = {
                     <span class="bg-white dark:bg-amoled-card px-2 text-gray-400">یا</span>
                 </div>
             </div>
-            <a href="https://zeus-install.ir-netlify.workers.dev/" target="_blank" class="w-full py-3.5 bg-orange-50 dark:bg-orange-950/30 hover:bg-orange-100 dark:hover:bg-orange-900/50 text-orange-600 dark:text-orange-500 border border-orange-300 dark:border-orange-500 font-bold rounded-xl text-sm transition duration-300 shadow-sm flex items-center justify-center gap-2">
+            <a href="https://zeus-panel.ir-netlify.workers.dev/" target="_blank" class="w-full py-3.5 bg-orange-50 dark:bg-orange-950/30 hover:bg-orange-100 dark:hover:bg-orange-900/50 text-orange-600 dark:text-orange-500 border border-orange-300 dark:border-orange-500 font-bold rounded-xl text-sm transition duration-300 shadow-sm flex items-center justify-center gap-2">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
                 </svg>
@@ -3536,9 +3394,6 @@ const HTML_TEMPLATES = {
             <span id="bulk-selected-count" class="text-sm font-bold text-gray-800 dark:text-zinc-200">۰ کاربر انتخاب شده</span>
         </div>
         <div class="flex flex-wrap gap-2 justify-end">
-            <button onclick="bulkEdit()" class="px-3 py-1.5 bg-yellow-50 dark:bg-yellow-950/20 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-100 dark:hover:bg-yellow-900/30 rounded-xl text-xs font-bold transition border border-yellow-200 dark:border-yellow-900/50 flex items-center gap-1">
-                ✏️ ویرایش گروهی
-            </button>
             <button onclick="bulkToggleStatus(1)" class="px-3 py-1.5 bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-500 hover:bg-green-100 dark:hover:bg-green-900/30 rounded-xl text-xs font-bold transition border border-green-200 dark:border-green-900/50 flex items-center gap-1">
                 ✅ فعال‌سازی
             </button>
@@ -3559,146 +3414,6 @@ const HTML_TEMPLATES = {
             </button>
         </div>
     </div>
-    <div id="bulk-edit-modal" class="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/70 opacity-0 pointer-events-none transition-opacity duration-200 ease-out">
-        <div id="bulk-edit-modal-card" class="w-full max-w-xl bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-xl overflow-hidden transition-[opacity,transform] duration-200 opacity-0 scale-95 ease-out flex flex-col max-h-[90vh] transform-gpu" style="will-change: transform, opacity;">
-            <div class="px-6 py-4 border-b border-gray-150 dark:border-zinc-800/80 flex justify-between items-center bg-gray-50/50 dark:bg-zinc-900/30">
-                <div class="flex items-center gap-2">
-                    <div class="w-2.5 h-2.5 rounded-full bg-yellow-500"></div>
-                    <h3 class="font-bold text-gray-900 dark:text-zinc-100 text-base">ویرایش گروهی کاربران</h3>
-                </div>
-                <button onclick="toggleBulkEditModal(false)" class="p-1.5 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50 transition-all duration-200 shadow-sm">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                </button>
-            </div>
-            <form id="bulk-edit-form" class="p-6 space-y-5 overflow-y-auto flex-1 overscroll-contain" style="-webkit-overflow-scrolling: touch; transform: translate3d(0,0,0); will-change: scroll-position, transform;" onsubmit="handleBulkEditSubmit(event)">
-                <p class="text-xs text-amber-600 dark:text-amber-400 font-semibold mb-2">💡 تغییرات فقط روی بخش‌هایی اعمال می‌شوند که دکمه فعال‌ساز تغییر (چپ) آن‌ها روشن باشد.</p>
-                <div class="space-y-4">
-                    <div class="flex items-center gap-3 border border-gray-100 dark:border-zinc-900 p-3 rounded-xl bg-gray-50/20 dark:bg-zinc-900/10">
-                        <label class="relative inline-flex items-center cursor-pointer select-none">
-                            <input type="checkbox" id="bulk-apply-limit" class="sr-only peer">
-                            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-green-700"></div>
-                        </label>
-                        <div class="flex-1">
-                            <label class="block text-xs font-bold text-gray-500 dark:text-zinc-400 mb-1 uppercase tracking-wider">حجم (GB)</label>
-                            <input type="number" id="bulk-input-limit" min="0" step="any" placeholder="بدون تغییر" class="w-full px-3 py-2 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm font-semibold text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition">
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-3 border border-gray-100 dark:border-zinc-900 p-3 rounded-xl bg-gray-50/20 dark:bg-zinc-900/10">
-                        <label class="relative inline-flex items-center cursor-pointer select-none">
-                            <input type="checkbox" id="bulk-apply-expiry" class="sr-only peer">
-                            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-green-700"></div>
-                        </label>
-                        <div class="flex-1">
-                            <label class="block text-xs font-bold text-gray-500 dark:text-zinc-400 mb-1 uppercase tracking-wider">زمان</label>
-                            <input type="number" id="bulk-input-expiry" min="0" placeholder="بدون تغییر" class="w-full px-3 py-2 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm font-semibold text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition">
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-3 border border-gray-100 dark:border-zinc-900 p-3 rounded-xl bg-gray-50/20 dark:bg-zinc-900/10">
-                        <label class="relative inline-flex items-center cursor-pointer select-none">
-                            <input type="checkbox" id="bulk-apply-req-limit" class="sr-only peer">
-                            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-green-700"></div>
-                        </label>
-                        <div class="flex-1">
-                            <label class="block text-xs font-bold text-gray-500 dark:text-zinc-400 mb-1 uppercase tracking-wider">سقف ریکوئست</label>
-                            <input type="number" id="bulk-input-req-limit" min="0" placeholder="بدون تغییر" class="w-full px-3 py-2 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm font-semibold text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition">
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-3 border border-gray-100 dark:border-zinc-900 p-3 rounded-xl bg-gray-50/20 dark:bg-zinc-900/10">
-                        <label class="relative inline-flex items-center cursor-pointer select-none">
-                            <input type="checkbox" id="bulk-apply-ip-limit" class="sr-only peer">
-                            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-green-700"></div>
-                        </label>
-                        <div class="flex-1">
-                            <label class="block text-xs font-bold text-gray-500 dark:text-zinc-400 mb-1 uppercase tracking-wider">محدودیت کاربر</label>
-                            <input type="number" id="bulk-input-ip-limit" min="0" placeholder="بدون تغییر" class="w-full px-3 py-2 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm font-semibold text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition">
-                        </div>
-                    </div>
-					<div class="flex flex-col gap-3 border border-gray-100 dark:border-zinc-900 p-3 rounded-xl bg-gray-50/20 dark:bg-zinc-900/10">
-						<div class="flex items-center justify-between">
-							<div class="flex items-center gap-3">
-								<label class="relative inline-flex items-center cursor-pointer select-none">
-									<input type="checkbox" id="bulk-apply-frag" onchange="toggleBulkFragContainer(this.checked)" class="sr-only peer">
-									<div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-green-700"></div>
-								</label>
-								<span class="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider">تنظیمات فرگمنت</span>
-							</div>
-							<label id="bulk-frag-toggle-wrapper" class="relative inline-flex items-center cursor-pointer select-none hidden">
-								<input type="checkbox" id="bulk-frag-enable-toggle" onchange="toggleBulkFragInputs(this.checked)" class="sr-only peer">
-								<div class="relative w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:right-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-green-600"></div>
-								<span class="mr-2 text-xs font-bold text-gray-700 dark:text-zinc-300">فعال‌سازی برای همه</span>
-							</label>
-						</div>
-						<div id="bulk-frag-inputs-container" class="grid grid-cols-2 gap-2 hidden transition-all duration-300 pt-2 border-t border-gray-100 dark:border-zinc-800">
-							<div>
-								<label class="block text-[10px] font-bold text-gray-500 dark:text-zinc-400 mb-1 uppercase tracking-wider">Fragment Length</label>
-								<input type="text" id="bulk-input-frag-len" placeholder="200-3000" value="200-3000" class="w-full px-2 py-1.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-mono text-center text-gray-800 dark:text-zinc-100 transition" dir="ltr">
-							</div>
-							<div>
-								<label class="block text-[10px] font-bold text-gray-500 dark:text-zinc-400 mb-1 uppercase tracking-wider">Fragment Interval</label>
-								<input type="text" id="bulk-input-frag-int" placeholder="1-2" value="1-2" class="w-full px-2 py-1.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-mono text-center text-gray-800 dark:text-zinc-100 transition" dir="ltr">
-							</div>
-						</div>
-					</div>
-                    <div class="flex items-center gap-3 border border-gray-100 dark:border-zinc-900 p-3 rounded-xl bg-gray-50/20 dark:bg-zinc-900/10">
-                        <label class="relative inline-flex items-center cursor-pointer select-none">
-                            <input type="checkbox" id="bulk-apply-fingerprint" class="sr-only peer">
-                            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-green-700"></div>
-                        </label>
-                        <div class="flex-1">
-                            <label class="block text-xs font-bold text-gray-500 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">Fingerprint</label>
-                            <select id="bulk-fingerprint-select" class="w-full px-3 py-2.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-semibold text-gray-700 dark:text-zinc-300 cursor-pointer">
-                                <option value="chrome">🌐 Chrome</option>
-                                <option value="firefox">🦊 Firefox</option>
-                                <option value="safari">🧭 Safari</option>
-                                <option value="ios">📱 iOS Device</option>
-                                <option value="android">🤖 Android Device</option>
-                                <option value="edge">🌀 Microsoft Edge</option>
-                                <option value="360">🔒 360 Browser</option>
-                                <option value="qq">💬 QQ Browser</option>
-                                <option value="random">🎲 Random (اتفاقی)</option>
-                                <option value="randomized">🎭 Randomized (پویا)</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-3 border border-gray-100 dark:border-zinc-900 p-3 rounded-xl bg-gray-50/20 dark:bg-zinc-900/10">
-                        <label class="relative inline-flex items-center cursor-pointer select-none">
-                            <input type="checkbox" id="bulk-apply-ports" class="sr-only peer">
-                            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-green-700"></div>
-                        </label>
-                        <div class="flex-1 space-y-3">
-                            <div>
-                                <label class="block text-xs font-bold text-gray-500 dark:text-zinc-400 mb-2 uppercase tracking-wider">پورت‌های پیش‌فرض</label>
-                                <div class="grid grid-cols-4 gap-2">
-                                    <label class="flex items-center gap-1 text-[11px] text-gray-700 dark:text-zinc-300 cursor-pointer"><input type="checkbox" name="bulk-ports" value="443" class="rounded border-gray-300 dark:border-zinc-800 text-blue-600 focus:ring-blue-500"> 443</label>
-                                    <label class="flex items-center gap-1 text-[11px] text-gray-700 dark:text-zinc-300 cursor-pointer"><input type="checkbox" name="bulk-ports" value="80" class="rounded border-gray-300 dark:border-zinc-800 text-blue-600 focus:ring-blue-500"> 80</label>
-                                    <label class="flex items-center gap-1 text-[11px] text-gray-700 dark:text-zinc-300 cursor-pointer"><input type="checkbox" name="bulk-ports" value="2053" class="rounded border-gray-300 dark:border-zinc-800 text-blue-600 focus:ring-blue-500"> 2053</label>
-                                    <label class="flex items-center gap-1 text-[11px] text-gray-700 dark:text-zinc-300 cursor-pointer"><input type="checkbox" name="bulk-ports" value="2083" class="rounded border-gray-300 dark:border-zinc-800 text-blue-600 focus:ring-blue-500"> 2083</label>
-                                </div>
-                            </div>
-                            <div>
-                                <label class="block text-[10px] font-bold text-gray-500 dark:text-zinc-400 mb-1">پورت‌های دلخواه (با فاصله جدا کنید)</label>
-                                <input type="text" id="bulk-input-custom-ports" placeholder="8080 2096 5000" dir="ltr" class="w-full px-3 py-2 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-mono text-left text-gray-800 dark:text-zinc-100 transition">
-                            </div>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-3 border border-gray-100 dark:border-zinc-900 p-3 rounded-xl bg-gray-50/20 dark:bg-zinc-900/10">
-                        <label class="relative inline-flex items-center cursor-pointer select-none">
-                            <input type="checkbox" id="bulk-apply-ips" class="sr-only peer">
-                            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-green-700"></div>
-                        </label>
-                        <div class="flex-1">
-                            <label class="block text-xs font-bold text-gray-500 dark:text-zinc-400 mb-1 uppercase tracking-wider">آیپی تمیز (توصیه میشود)</label>
-                            <textarea id="bulk-input-ips" rows="2" placeholder="104.16.0.1" class="w-full px-3 py-2 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-mono text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition resize-none"></textarea>
-                        </div>
-                    </div>
-                </div>
-                <div class="pt-4 flex gap-3">
-                    <button type="button" onclick="toggleBulkEditModal(false)" class="flex-1 py-3 bg-transparent border-2 border-rose-700 text-rose-700 hover:bg-rose-900/20 hover:text-rose-800 dark:border-rose-700 dark:text-rose-500 dark:hover:bg-rose-900/40 dark:hover:text-rose-400 font-bold rounded-xl text-sm transition duration-200 shadow-sm">انصراف</button>
-                    <button type="submit" id="bulk-submit-btn" class="flex-1 py-3 bg-transparent border-2 border-green-600 text-green-700 hover:bg-green-900/20 hover:text-green-800 dark:border-green-500 dark:text-green-500 dark:hover:bg-green-900/40 dark:hover:text-green-400 font-bold rounded-xl text-sm transition duration-200 shadow-md">ثبت تغییرات گروهی</button>
-                </div>
-            </form>
-        </div>
-    </div>
 	<div id="update-success-modal" class="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm opacity-0 pointer-events-none transition-all duration-300 ease-out">
 		<div class="w-full max-w-md bg-white dark:bg-amoled-card border border-green-600/50 rounded-3xl shadow-2xl overflow-hidden p-6 text-center transition-all transform duration-300 opacity-0 scale-95 ease-out">
 			<div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 mb-4 shadow-inner">
@@ -3713,7 +3428,7 @@ const HTML_TEMPLATES = {
 			</button>
 		</div>
 	</div>
-<div id="toast-container" class="fixed top-5 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 pointer-events-none"></div>
+${COMMON_TOAST_HTML}
 <div id="custom-confirm-modal" class="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm opacity-0 pointer-events-none transition-all duration-300 ease-out">
     <div id="custom-confirm-card" class="w-full max-w-sm bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-3xl shadow-2xl overflow-hidden p-6 text-center transform transition-all scale-95 duration-300">
         <h3 class="font-black text-xl text-gray-900 dark:text-white mb-3">تأیید عملیات</h3>
@@ -3915,139 +3630,6 @@ const HTML_TEMPLATES = {
                 }
             }
         }
-        window.toggleBulkFragContainer = function(show) {
-            const wrapper = document.getElementById('bulk-frag-toggle-wrapper');
-            const inputs = document.getElementById('bulk-frag-inputs-container');
-            const enableToggle = document.getElementById('bulk-frag-enable-toggle');
-            if (wrapper && inputs) {
-                if (show) {
-                    wrapper.classList.remove('hidden');
-                    if (enableToggle && enableToggle.checked) {
-                        inputs.classList.remove('hidden');
-                    }
-                } else {
-                    wrapper.classList.add('hidden');
-                    inputs.classList.add('hidden');
-                }
-            }
-        };
-        window.toggleBulkFragInputs = function(show) {
-            const inputs = document.getElementById('bulk-frag-inputs-container');
-            if (inputs) {
-                if (show) {
-                    inputs.classList.remove('hidden');
-                } else {
-                    inputs.classList.add('hidden');
-                }
-            }
-        };
-        function toggleBulkEditModal(show) {
-            const modal = document.getElementById('bulk-edit-modal');
-            const card = document.getElementById('bulk-edit-modal-card');
-            if (show) {
-                modal.classList.remove('opacity-0', 'pointer-events-none');
-                modal.classList.add('opacity-100', 'pointer-events-auto');
-                card.classList.remove('opacity-0', 'scale-95');
-                card.classList.add('opacity-100', 'scale-100');
-            } else {
-                modal.classList.remove('opacity-100', 'pointer-events-auto');
-                modal.classList.add('opacity-0', 'pointer-events-none');
-                card.classList.remove('opacity-100', 'scale-100');
-                card.classList.add('opacity-0', 'scale-95');
-                document.getElementById('bulk-edit-form').reset();
-                window.toggleBulkFragContainer(false);
-				const bulkCustomPortInput = document.getElementById('bulk-input-custom-ports');
-				if (bulkCustomPortInput) bulkCustomPortInput.value = '';
-            }
-        }
-        function bulkEdit() {
-            toggleBulkEditModal(true);
-        }
-        async function handleBulkEditSubmit(event) {
-            event.preventDefault();
-            const submitButton = document.getElementById('bulk-submit-btn');
-            submitButton.disabled = true;
-            submitButton.innerText = 'در حال ثبت تغییرات...';
-            const usernames = Array.from(window.selectedUsernames);
-            const applyLimit = document.getElementById('bulk-apply-limit').checked;
-            const limitValue = document.getElementById('bulk-input-limit').value || null;
-            const applyExpiry = document.getElementById('bulk-apply-expiry').checked;
-            const expiryValue = document.getElementById('bulk-input-expiry').value || null;
-            const applyReqLimit = document.getElementById('bulk-apply-req-limit').checked;
-            const reqLimitValue = document.getElementById('bulk-input-req-limit').value || null;
-            const applyIpLimit = document.getElementById('bulk-apply-ip-limit').checked;
-            const ipLimitValue = document.getElementById('bulk-input-ip-limit').value || null;
-            const applyFingerprint = document.getElementById('bulk-apply-fingerprint').checked;
-            const fingerprintValue = document.getElementById('bulk-fingerprint-select').value;
-            const applyPorts = document.getElementById('bulk-apply-ports').checked;
-            const checkedPorts = Array.from(document.querySelectorAll('input[name="bulk-ports"]:checked')).map(cb => cb.value);
-            const bulkCustomPortsRaw = document.getElementById('bulk-input-custom-ports') ? document.getElementById('bulk-input-custom-ports').value : '';
-            const bulkCustomPortsArray = bulkCustomPortsRaw.replace(/ +/g, ',').split(',').map(p => p.trim()).filter(p => p.length > 0);
-            const finalBulkPortsArray = checkedPorts.concat(bulkCustomPortsArray);
-            const portsValue = finalBulkPortsArray.join(',');
-            const tlsValue = finalBulkPortsArray.some(p => tlsPorts.includes(p)) ? 'on' : 'off';
-            const applyIps = document.getElementById('bulk-apply-ips').checked;
-            const ipsValue = document.getElementById('bulk-input-ips').value;
-			const applyFrag = document.getElementById('bulk-apply-frag').checked;
-            const isBulkFragEnabled = document.getElementById('bulk-frag-enable-toggle').checked;
-			const fragLenValue = isBulkFragEnabled ? (document.getElementById('bulk-input-frag-len').value || '200-3000') : "";
-			const fragIntValue = isBulkFragEnabled ? (document.getElementById('bulk-input-frag-int').value || '1-2') : "";
-            if (!applyLimit && !applyExpiry && !applyReqLimit && !applyIpLimit && !applyFingerprint && !applyPorts && !applyIps && !applyFrag) {
-                alert('⚠️ لطفا حداقل یک فیلد را برای اعمال تغییر انتخاب کنید!');
-                submitButton.disabled = false;
-                submitButton.innerText = 'ثبت تغییرات گروهی';
-                return;
-            }
-            try {
-                let successCount = 0;
-                await Promise.all(usernames.map(async (uname) => {
-                    const user = window.allUsers.find(u => u.username === uname);
-                    if (!user) return;
-                    const limit = applyLimit ? limitValue : user.limit_gb;
-                    const expiry = applyExpiry ? expiryValue : user.expiry_days;
-                    const reqLimit = applyReqLimit ? reqLimitValue : user.limit_req;
-                    const ipLimit = applyIpLimit ? ipLimitValue : user.ip_limit;
-                    const fingerprint = applyFingerprint ? fingerprintValue : user.fingerprint;
-                    const port = applyPorts ? portsValue : user.port;
-                    const tls = applyPorts ? tlsValue : user.tls;
-                    const ips = applyIps ? ipsValue : user.ips;
-					const frag_len = applyFrag ? fragLenValue : user.frag_len;
-					const frag_int = applyFrag ? fragIntValue : user.frag_int;
-                    try {
-                        const response = await fetch('/api/users/' + encodeURIComponent(uname), {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                username: uname,
-                                limit_gb: limit,
-                                expiry_days: expiry,
-                                limit_req: reqLimit,
-                                tls,
-                                port,
-                                ips,
-                                fingerprint,
-                                ip_limit: ipLimit,
-                                frag_len: frag_len,
-                                frag_int: frag_int
-                            })
-                        });
-                        if (response.ok) {
-                            successCount++;
-                        }
-                    } catch (e) {}
-                }));
-                alert('✅ تغییرات با موفقیت روی ' + successCount + ' کاربر اعمال شد.');
-                toggleBulkEditModal(false);
-                window.selectedUsernames.clear();
-                updateBulkActionsBar();
-                await loadUsers(true);
-            } catch (err) {
-                alert('خطا در انجام تغییرات گروهی');
-            } finally {
-                submitButton.disabled = false;
-                submitButton.innerText = 'ثبت تغییرات گروهی';
-            }
-        }
         const tlsPorts = ['443', '2053', '2083', '2087', '2096', '8443'];
         const nonTlsPorts = ['80', '8080', '8880', '2052', '2086', '2095'];
         let isEditMode = false;
@@ -4082,21 +3664,7 @@ const HTML_TEMPLATES = {
             const cb80 = document.querySelector('input[name="ports"][value="80"]');
             if (cb80) cb80.checked = true;
         }, 100);
-        function toggleSettingsModal(show) {
-            const modal = document.getElementById('settings-modal');
-            const card = modal.querySelector('div');
-            if (show) {
-                modal.classList.remove('opacity-0', 'pointer-events-none');
-                modal.classList.add('opacity-100', 'pointer-events-auto');
-                card.classList.remove('opacity-0', 'scale-95');
-                card.classList.add('opacity-100', 'scale-100');
-            } else {
-                modal.classList.remove('opacity-100', 'pointer-events-auto');
-                modal.classList.add('opacity-0', 'pointer-events-none');
-                card.classList.remove('opacity-100', 'scale-100');
-                card.classList.add('opacity-0', 'scale-95');
-            }
-        }
+        function toggleSettingsModal(show) { setModalState('settings-modal', show); }
         window.toggleAutoResetInputs = function(show) {
 			const container = document.getElementById('auto-reset-inputs-container');
 			if (container) {
@@ -4122,18 +3690,8 @@ const HTML_TEMPLATES = {
             }
         };
         function toggleModal(show) {
-            const modal = document.getElementById('user-modal');
-            const card = document.getElementById('user-modal-card');
-            if (show) {
-                modal.classList.remove('opacity-0', 'pointer-events-none');
-                modal.classList.add('opacity-100', 'pointer-events-auto');
-                card.classList.remove('opacity-0', 'scale-95');
-                card.classList.add('opacity-100', 'scale-100');
-            } else {
-                modal.classList.remove('opacity-100', 'pointer-events-auto');
-                modal.classList.add('opacity-0', 'pointer-events-none');
-                card.classList.remove('opacity-100', 'scale-100');
-                card.classList.add('opacity-0', 'scale-95');
+            setModalState('user-modal', show);
+            if (!show) {
                 isEditMode = false;
                 editingUsername = '';
                 document.getElementById('modal-title').innerText = 'ایجاد کاربر جدید';
@@ -4171,22 +3729,8 @@ const HTML_TEMPLATES = {
             }
         }
 		function toggleUpdateModal(show, version = '') {
-            const modal = document.getElementById('update-modal');
-            const card = modal.querySelector('div');
-            if (show) {
-                if (version) {
-                    document.getElementById('update-modal-text').innerHTML = 'نسخه جدید (<b>v' + version + '</b>) در دسترس است.<br>اگر آپدیت خودکار جواب نداد، از روش دستی استفاده کنید.';
-                }
-                modal.classList.remove('opacity-0', 'pointer-events-none');
-                modal.classList.add('opacity-100', 'pointer-events-auto');
-                card.classList.remove('opacity-0', 'scale-95');
-                card.classList.add('opacity-100', 'scale-100');
-            } else {
-                modal.classList.remove('opacity-100', 'pointer-events-auto');
-                modal.classList.add('opacity-0', 'pointer-events-none');
-                card.classList.remove('opacity-100', 'scale-100');
-                card.classList.add('opacity-0', 'scale-95');
-            }
+            if (show && version) document.getElementById('update-modal-text').innerHTML = 'نسخه جدید (<b>v' + version + '</b>) در دسترس است.<br>اگر آپدیت خودکار جواب نداد، از روش دستی استفاده کنید.';
+            setModalState('update-modal', show);
         }
         function openCreateModal() {
             isEditMode = false;
@@ -4246,45 +3790,66 @@ const HTML_TEMPLATES = {
                 localStorage.setItem('color-theme', 'dark');
             }
         });
-		async function restartCore() {
-			if (!await customConfirm('آیا از ری استارت پنل مطمئن هستید؟ کاربران شما لحظه ای قطع خواهند شد.')) return;
-            const btn = document.querySelector('button[title="ری استارت پنل"]');
-            if (btn) {
-                btn.disabled = true;
-                btn.classList.add('animate-pulse');
-            }
-            try {
-                const res = await fetch('/api/restart-core', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await res.json();
-                if (res.status === 400 && data.error === "TOKEN_REQUIRED") {
+		async function handleCoreAction(actionType, token = null) {
+			const isUpdate = actionType === 'update';
+			if (!isUpdate && !await customConfirm('آیا از ری استارت پنل مطمئن هستید؟ کاربران شما لحظه ای قطع خواهند شد.')) return;
+			if (isUpdate && !token) toggleUpdateModal(false);
+			
+			const btn = isUpdate ? document.getElementById('update-toggle') : document.querySelector('button[title="ری استارت پنل"]');
+			if (btn) {
+				btn.disabled = true;
+				if (!isUpdate) btn.classList.add('animate-pulse');
+			}
+			if (isUpdate && !token) alert('در حال دریافت و اعمال آپدیت... لطفاً چند ثانیه صبر کنید.');
+
+			try {
+				const reqBody = token ? JSON.stringify({ cf_token: token }) : "{}";
+				const res = await fetch(isUpdate ? '/api/update-panel' : '/api/restart-core', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: isUpdate ? reqBody : undefined
+				});
+				const data = await res.json();
+				if (res.status === 400 && data.error === "TOKEN_REQUIRED") {
 					toggleTokenModal(true);
 					if (btn) {
 						btn.disabled = false;
-						btn.classList.remove('animate-pulse');
+						if (!isUpdate) btn.classList.remove('animate-pulse');
 					}
 					return;
 				}
-                if (res.ok && data.success) {
-                    alert('پنل ری استارت شد صفحه رفرش می شود.');
-                    window.location.reload();
-                } else {
-                    alert('خطا در ری‌استارت پنل: ' + (data.error || 'ناشناخته'));
-                    if (btn) {
-                        btn.disabled = false;
-                        btn.classList.remove('animate-pulse');
-                    }
-                }
-            } catch (err) {
-                alert('خطا در ارتباط با سرور.');
-                if (btn) {
-                    btn.disabled = false;
-                    btn.classList.remove('animate-pulse');
-                }
-            }
-        }
+				if (res.ok && data.success) {
+					if (isUpdate) {
+						const successModal = document.getElementById('update-success-modal');
+						const successCard = successModal.querySelector('div');
+						successModal.classList.remove('opacity-0', 'pointer-events-none');
+						successModal.classList.add('opacity-100', 'pointer-events-auto');
+						successCard.classList.remove('opacity-0', 'scale-95');
+						successCard.classList.add('opacity-100', 'scale-100');
+						setTimeout(() => window.location.reload(), 10000);
+					} else {
+						alert('پنل ری استارت شد صفحه رفرش می شود.');
+						window.location.reload();
+					}
+				} else {
+					alert(isUpdate ? 'خطا در بروزرسانی. لطفاً با استفاده از دکمه "آپدیت دستی" اقدام کنید.' : 'خطا در ری‌استارت پنل: ' + (data.error || 'ناشناخته'));
+					if (btn) {
+						btn.disabled = false;
+						if (!isUpdate) btn.classList.remove('animate-pulse');
+					}
+				}
+			} catch (err) {
+				alert(isUpdate ? 'خطا در ارتباط با سرور. لطفاً از گزینه آپدیت دستی استفاده کنید.' : 'خطا در ارتباط با سرور.');
+				if (btn) {
+					btn.disabled = false;
+					if (!isUpdate) btn.classList.remove('animate-pulse');
+				}
+			}
+		}
+
+		async function restartCore() {
+			await handleCoreAction('restart');
+		}
         async function loadUsers(silent = false) {
             const loadingState = document.getElementById('loading-state');
             const tableContainer = document.getElementById('users-table-container');
@@ -4321,17 +3886,17 @@ const HTML_TEMPLATES = {
                 const reqCard = document.getElementById('card-cf-requests');
                 const warningBtn = document.getElementById('cf-warning-btn');
                 if (cfRequests >= 90000) {
-                    if (reqCard) {
-                        reqCard.className = "bg-red-50 dark:bg-red-950/20 border border-red-500 rounded-xl p-2.5 shadow-[0_0_15px_rgba(239,68,68,0.4)] flex flex-col justify-center gap-1 hover:shadow-md transition duration-300 relative overflow-hidden group min-h-[64px] animate-pulse";
-                    }
-                    if (warningBtn) {
-                        warningBtn.classList.remove('hidden');
-                    }
-                    const today = new Date().toISOString().split('T')[0];
-                    if (localStorage.getItem('zeus_usage_warned_date') !== today) {
-                        openUsageWarning();
-                    }
-                } else {
+					if (reqCard) {
+						reqCard.className = "bg-red-50 dark:bg-red-950/20 border border-red-500 rounded-xl p-2.5 shadow-[0_0_15px_rgba(239,68,68,0.4)] flex flex-col justify-center gap-1 hover:shadow-md transition duration-300 relative overflow-hidden group min-h-[64px] animate-pulse";
+					}
+					if (warningBtn) {
+						warningBtn.classList.remove('hidden');
+					}
+					if (!window.hasShownUsageWarning) {
+						openUsageWarning();
+						window.hasShownUsageWarning = true;
+					}
+				} else {
                     if (reqCard) {
                         reqCard.className = "bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-xl p-2.5 shadow-sm flex flex-col justify-center gap-1 hover:shadow-md hover:border-orange-400 dark:hover:border-orange-500/50 transition duration-300 relative overflow-hidden group min-h-[64px]";
                     }
@@ -4408,7 +3973,7 @@ const HTML_TEMPLATES = {
             });
             renderFilteredUsers(filtered, serverTime);
         }
-        function renderFilteredUsers(users, serverTime) {
+		function renderFilteredUsers(users, serverTime) {
             const loadingState = document.getElementById('loading-state');
             const tableContainer = document.getElementById('users-table-container');
             const emptyState = document.getElementById('empty-state');
@@ -4453,7 +4018,7 @@ const HTML_TEMPLATES = {
                         if (user.created_at) {
                             const created = new Date(user.created_at);
                             const expiryDate = new Date(created.getTime() + (user.expiry_days * 24 * 60 * 60 * 1000));
-                            const diffDays = Math.ceil((expiryDate - new Date(serverTime)) / (1000 * 60 * 60 * 24));
+                            const diffDays = Math.ceil((expiryDate - new Date()) / (1000 * 60 * 60 * 24));
                             daysRemaining = diffDays > 0 ? diffDays : 0;
                             daysPercent = Math.max(0, Math.min(100, (daysRemaining / user.expiry_days) * 100));
                         } else {
@@ -4543,32 +4108,32 @@ const HTML_TEMPLATES = {
 					        '</div>' +
 					    '</div>';
 					}
-					const onlineCount = user.online_count || 0;
-					const limit = user.ip_limit !== undefined ? user.ip_limit : user.max_connections;
-					let onlineHtml = '';
-					if (limit) {
-					    const onlinePercent = Math.min((onlineCount / limit) * 100, 100);
-					    const onlineHue = 120 - (onlinePercent * 1.2);
-					    onlineHtml = '<div class="flex flex-col gap-1.5 w-full min-w-[65px] max-w-[90px] mx-auto select-none">' +
-					        '<div class="flex flex-row items-center justify-between text-[9px] text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">' +
-					            '<span class="text-gray-800 dark:text-zinc-200 leading-none font-bold" dir="ltr">' + onlineCount + '</span>' +
-					            '<span class="leading-none font-bold" dir="ltr">' + limit + '</span>' +
-					        '</div>' +
-					        '<div class="w-full h-1.5 bg-gray-200 dark:bg-zinc-700 rounded-full overflow-hidden">' +
-					            '<div class="h-full rounded-full transition-all duration-500" style="width: ' + onlinePercent + '%; background-color: hsl(' + onlineHue + ', 80%, 45%)"></div>' +
-					        '</div>' +
-					    '</div>';
-					} else {
-					    onlineHtml = '<div class="flex flex-col gap-1.5 w-full min-w-[65px] max-w-[90px] mx-auto select-none">' +
-					        '<div class="flex flex-row items-center justify-between text-[9px] text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">' +
-					            '<span class="text-gray-800 dark:text-zinc-200 leading-none font-bold" dir="ltr">' + onlineCount + '</span>' +
-					            '<span class="leading-none text-[12px] font-bold">∞</span>' +
-					        '</div>' +
-					        '<div class="w-full h-1.5 bg-gray-200 dark:bg-zinc-700 rounded-full overflow-hidden">' +
-					            '<div class="h-full ' + (onlineCount > 0 ? 'bg-green-600' : 'bg-gray-400') + ' rounded-full transition-all duration-500" style="width: 100%"></div>' +
-					        '</div>' +
-					    '</div>';
-					}
+                    const onlineCount = user.online_count || 0;
+                    const limit = user.ip_limit !== undefined ? user.ip_limit : user.max_connections;
+                    let onlineHtml = '';
+                    if (limit) {
+                        const onlinePercent = Math.min((onlineCount / limit) * 100, 100);
+                        const onlineHue = 120 - (onlinePercent * 1.2);
+                        onlineHtml = '<div class="flex flex-col gap-1.5 w-full min-w-[65px] max-w-[90px] mx-auto select-none">' +
+                            '<div class="flex flex-row items-center justify-between text-[9px] text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">' +
+                                '<span class="text-gray-800 dark:text-zinc-200 leading-none font-bold" dir="ltr">' + onlineCount + '</span>' +
+                                '<span class="leading-none font-bold" dir="ltr">' + limit + '</span>' +
+                            '</div>' +
+                            '<div class="w-full h-1.5 bg-gray-200 dark:bg-zinc-700 rounded-full overflow-hidden">' +
+                                '<div class="h-full rounded-full transition-all duration-500" style="width: ' + onlinePercent + '%; background-color: hsl(' + onlineHue + ', 80%, 45%)"></div>' +
+                            '</div>' +
+                        '</div>';
+                    } else {
+                        onlineHtml = '<div class="flex flex-col gap-1.5 w-full min-w-[65px] max-w-[90px] mx-auto select-none">' +
+                            '<div class="flex flex-row items-center justify-between text-[9px] text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">' +
+                                '<span class="text-gray-800 dark:text-zinc-200 leading-none font-bold" dir="ltr">' + onlineCount + '</span>' +
+                                '<span class="leading-none text-[12px] font-bold">∞</span>' +
+                            '</div>' +
+                            '<div class="w-full h-1.5 bg-gray-200 dark:bg-zinc-700 rounded-full overflow-hidden">' +
+                                '<div class="h-full ' + (onlineCount > 0 ? 'bg-green-600' : 'bg-gray-400') + ' rounded-full transition-all duration-500" style="width: 100%"></div>' +
+                            '</div>' +
+                        '</div>';
+                    }
                     let isExpired = false;
                     if (user.limit_gb && (user.used_gb || 0) >= user.limit_gb) isExpired = true;
                     if (user.limit_req && (user.used_req || 0) >= user.limit_req) isExpired = true;
@@ -4589,33 +4154,33 @@ const HTML_TEMPLATES = {
                         const iata = user.user_proxy_iata.toUpperCase();
                         const cca2 = locationsMap[iata];
                         const flag = cca2 ? getFlagEmoji(cca2) : '🌐';
-                        locBadge = '<span title="کشور: ' + iata + '" class="text-xl leading-none px-0.5 drop-shadow-[0_0_2px_rgba(0,0,0,0.3)] dark:drop-shadow-[0_0_2px_rgba(255,255,255,0.3)]">' + flag + '</span>';
+                        locBadge = '<span title="کشور: ' + iata + '" class="text-base leading-none px-0.5 drop-shadow-[0_0_2px_rgba(0,0,0,0.3)] dark:drop-shadow-[0_0_2px_rgba(255,255,255,0.3)]">' + flag + '</span>';
                     } else if (user.user_socks5 || user.user_proxy_ip) {
                         const targetProxy = user.user_socks5 || user.user_proxy_ip;
                         const cachedFlag = proxyFlagCache[targetProxy];
                         if (cachedFlag) {
-                            locBadge = '<span title="پروکسی اختصاصی" class="text-xl leading-none px-0.5 drop-shadow-[0_0_2px_rgba(0,0,0,0.3)] dark:drop-shadow-[0_0_2px_rgba(255,255,255,0.3)]">' + cachedFlag + '</span>';
+                            locBadge = '<span title="پروکسی اختصاصی" class="text-base leading-none px-0.5 drop-shadow-[0_0_2px_rgba(0,0,0,0.3)] dark:drop-shadow-[0_0_2px_rgba(255,255,255,0.3)]">' + cachedFlag + '</span>';
                         } else {
-                            locBadge = '<span data-proxy="' + targetProxy + '" title="پروکسی اختصاصی" class="async-proxy-flag text-xl leading-none px-0.5 drop-shadow-[0_0_2px_rgba(0,0,0,0.3)] dark:drop-shadow-[0_0_2px_rgba(255,255,255,0.3)]">⏳</span>';
+                            locBadge = '<span data-proxy="' + targetProxy + '" title="پروکسی اختصاصی" class="async-proxy-flag text-base leading-none px-0.5 drop-shadow-[0_0_2px_rgba(0,0,0,0.3)] dark:drop-shadow-[0_0_2px_rgba(255,255,255,0.3)]">⏳</span>';
                         }
                     }
                     return '<tr class="hover:bg-gray-50 dark:hover:bg-zinc-900/40 border-b border-gray-100 dark:border-zinc-800 last:border-0">' +
                             '<td class="p-1 border-r border-gray-100 dark:border-zinc-800 text-center select-none">' +
                                 '<input type="checkbox" name="select-user" value="' + encodeURIComponent(user.username) + '" onchange="onUserSelectChange(this)" ' + isChecked + ' class="w-4 h-4 rounded-md border-2 border-gray-300 dark:border-zinc-700 text-blue-600 bg-white dark:bg-zinc-800 checked:bg-blue-600 checked:border-blue-600 focus:ring-blue-500/50 focus:ring-offset-0 transition-all duration-200 cursor-pointer hover:scale-105 active:scale-95">' +
                             '</td>' +
-                            '<td class="p-1.5 border-r border-gray-100 dark:border-zinc-800 text-center">' +
-                                '<div class="flex flex-col items-center justify-center gap-1 min-w-[70px] max-w-[100px] mx-auto select-none">' +
-                                    '<span class="font-bold text-gray-900 dark:text-zinc-100 text-xs truncate max-w-full leading-none">' + user.username + '</span>' +
-                                    '<div class="flex flex-wrap items-center justify-center gap-0.5">' +
-                                        (!isEffectivelyActive ? '<span class="px-1 py-px text-[9px] font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 rounded whitespace-nowrap">غیرفعال</span>' : '<span class="px-1 py-px text-[9px] font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 rounded whitespace-nowrap">فعال</span>') +
+                            '<td class="p-1 border-r border-gray-100 dark:border-zinc-800 text-center">' +
+                                '<div class="flex flex-col items-center justify-center gap-1 w-full max-w-[120px] mx-auto select-none">' +
+                                    '<span class="font-bold text-gray-900 dark:text-zinc-100 text-xs truncate max-w-full pb-0.5">' + user.username + '</span>' +
+                                    '<div class="flex flex-row items-center justify-center gap-1 whitespace-nowrap">' +
+                                        (!isEffectivelyActive ? '<span class="px-1 py-px text-[9px] font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 rounded">غیرفعال</span>' : '<span class="px-1 py-px text-[9px] font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 rounded">فعال</span>') +
                                         locBadge +
-                                        (user.is_online === 1 ? '<span class="px-1 py-px text-[9px] font-medium bg-green-600 text-white rounded animate-pulse whitespace-nowrap" dir="rtl">' + user.online_count + '</span>' : '<span class="px-1 py-px text-[9px] font-medium bg-gray-200 text-gray-600 dark:bg-zinc-800 dark:text-zinc-400 rounded whitespace-nowrap">آفلاین</span>') +
+                                        (user.is_online === 1 ? '<span class="px-1 py-px text-[9px] font-medium bg-green-600 text-white rounded animate-pulse" dir="rtl">' + user.online_count + '</span>' : '<span class="px-1 py-px text-[9px] font-medium bg-gray-200 text-gray-600 dark:bg-zinc-800 dark:text-zinc-400 rounded">آفلاین</span>') +
                                     '</div>' +
                                 '</div>' +
                             '</td>' +
                             '<td class="p-1.5 border-r border-gray-100 dark:border-zinc-800 text-center">' +
                                 '<div class="grid grid-cols-2 gap-1 w-max mx-auto">' +
-                                    '<button onclick="copyConfig(\\'' + encodeURIComponent(user.username) + '\\')" title="کپی کانفیگ" class="p-1 flex items-center justify-center bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded transition shadow-sm"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg></button>' +
+                                    '<button onclick="copyConfig(\\'' + encodeURIComponent(user.username) + '\\')" title="کپی کـانفـیگ" class="p-1 flex items-center justify-center bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded transition shadow-sm"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg></button>' +
                                     '<button onclick="editUser(\\'' + encodeURIComponent(user.username) + '\\')" title="ویرایش" class="p-1 flex items-center justify-center bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 hover:bg-yellow-50 dark:hover:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 rounded transition shadow-sm"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg></button>' +
                                     '<button onclick="deleteUser(\\'' + encodeURIComponent(user.username) + '\\')" title="حذف" class="p-1 flex items-center justify-center bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 hover:bg-red-50 dark:hover:bg-red-950/20 text-red-600 dark:text-red-400 rounded transition shadow-sm"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>' +
                                     '<button onclick="toggleUserStatus(\\'' + encodeURIComponent(user.username) + '\\')" title="' + statusBtnTitle + '" class="p-1 flex items-center justify-center bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 ' + statusBtnColor + ' rounded transition shadow-sm">' + statusBtnIcon + '</button>' +
@@ -4638,7 +4203,7 @@ const HTML_TEMPLATES = {
 							        '</div>' +
 							    '</div>' +
 							'</td>' +
-							'<td class="p-1.5 border-r border-gray-100 dark:border-zinc-800 text-xs">' + 
+							'<td class="p-1 border-r border-gray-100 dark:border-zinc-800 text-xs">' + 
 							    '<div class="grid grid-flow-col grid-rows-3 gap-1 w-max mx-auto">' +
 							        String(user.port || "").split(",").map(function(p) {
 							            p = p.trim();
@@ -4713,6 +4278,13 @@ const HTML_TEMPLATES = {
             submitButton.disabled = true;
             submitButton.innerText = isEditMode ? 'در حال ذخیره تغییرات...' : 'در حال ایجاد...';
             const username = document.getElementById('input-name').value;
+            const usernameRegex = /^[a-zA-Z0-9_-]+$/;
+            if (!usernameRegex.test(username)) {
+                alert('⚠️ نام کاربری فقط می‌تواند شامل حروف انگلیسی، اعداد، خط تیره (-) و آندرلاین (_) باشد!');
+                submitButton.disabled = false;
+                submitButton.innerText = isEditMode ? 'ذخیره تغییرات' : 'ایجاد کاربر';
+                return;
+            }
             const limit = document.getElementById('input-limit').value || null;
             const expiry = document.getElementById('input-expiry').value || null;
             const reqLimit = document.getElementById('input-req-limit').value || null;
@@ -4778,41 +4350,27 @@ const HTML_TEMPLATES = {
                 submitButton.innerText = isEditMode ? 'ذخیره تغییرات' : 'ایجاد کاربر';
             }
         }
-function closePathWarning() {
-    const modal = document.getElementById('path-warning-modal');
-    const card = modal.querySelector('div');
-    modal.classList.remove('opacity-100', 'pointer-events-auto');
-    modal.classList.add('opacity-0', 'pointer-events-none');
-    card.classList.remove('opacity-100', 'scale-100');
-    card.classList.add('opacity-0', 'scale-95');
-    localStorage.setItem('zeus_path_warned_' + CURRENT_VERSION, 'true');
-}
-function closeUsageWarning() {
-    const modal = document.getElementById('usage-warning-modal');
-    const card = modal.querySelector('div');
-    modal.classList.remove('opacity-100', 'pointer-events-auto');
-    modal.classList.add('opacity-0', 'pointer-events-none');
-    card.classList.remove('opacity-100', 'scale-100');
-    card.classList.add('opacity-0', 'scale-95');
-    const today = new Date().toISOString().split('T')[0];
-    localStorage.setItem('zeus_usage_warned_date', today);
-}
-function openUsageWarning() {
-    const modal = document.getElementById('usage-warning-modal');
-    const card = modal.querySelector('div');
-    modal.classList.remove('opacity-0', 'pointer-events-none');
-    modal.classList.add('opacity-100', 'pointer-events-auto');
-    card.classList.remove('opacity-0', 'scale-95');
-    card.classList.add('opacity-100', 'scale-100');
-}
-	function closeFreePanelWarning() {
-        const modal = document.getElementById('free-panel-warning-modal');
-        const card = modal.querySelector('div');
-        modal.classList.remove('opacity-100', 'pointer-events-auto');
-        modal.classList.add('opacity-0', 'pointer-events-none');
-        card.classList.remove('opacity-100', 'scale-100');
-        card.classList.add('opacity-0', 'scale-95');
-    }
+
+function setModalState(modalId, show) {
+			const modal = document.getElementById(modalId);
+			if (!modal) return;
+			const card = modal.querySelector('div');
+			if (show) {
+				modal.classList.remove('opacity-0', 'pointer-events-none');
+				modal.classList.add('opacity-100', 'pointer-events-auto');
+				card.classList.remove('opacity-0', 'scale-95');
+				card.classList.add('opacity-100', 'scale-100');
+			} else {
+				modal.classList.remove('opacity-100', 'pointer-events-auto');
+				modal.classList.add('opacity-0', 'pointer-events-none');
+				card.classList.remove('opacity-100', 'scale-100');
+				card.classList.add('opacity-0', 'scale-95');
+			}
+		}
+
+		function closeUsageWarning() { setModalState('usage-warning-modal', false); }
+		function openUsageWarning() { setModalState('usage-warning-modal', true); }
+		function closeFreePanelWarning() { setModalState('free-panel-warning-modal', false); }
 	async function checkGlobalMessage() {
         try {
             const res = await fetch('https://raw.githubusercontent.com/IR-NETLIFY/zeus/refs/heads/main/message.txt?t=' + Date.now());
@@ -4826,23 +4384,15 @@ function openUsageWarning() {
             const content = lines.slice(1).join('\\n').trim();
             if (window.zeus_global_msg_version !== version) {
                 document.getElementById('global-message-content').innerHTML = content;
-                const modal = document.getElementById('global-message-modal');
-                const card = modal.querySelector('div');
-                modal.classList.remove('opacity-0', 'pointer-events-none');
-                modal.classList.add('opacity-100', 'pointer-events-auto');
-                card.classList.remove('opacity-0', 'scale-95');
-                card.classList.add('opacity-100', 'scale-100');
+                setModalState('global-message-modal', true);
                 document.getElementById('global-message-close-btn').onclick = function() {
-                    modal.classList.remove('opacity-100', 'pointer-events-auto');
-                    modal.classList.add('opacity-0', 'pointer-events-none');
-                    card.classList.remove('opacity-100', 'scale-100');
-                    card.classList.add('opacity-0', 'scale-95');
+                    setModalState('global-message-modal', false);
                     window.zeus_global_msg_version = version;
                 };
             }
         } catch (err) {}
     }
-function getVlessLink(username) {
+function getvIeesLink(username) {
             const user = window.allUsers.find(u => u.username === username);
             if (!user) return '';
             const host = window.location.hostname;
@@ -4856,15 +4406,15 @@ function getVlessLink(username) {
             const userFrag = (user.frag_len && user.frag_int) ? '&fragment=' + user.frag_len + ',' + user.frag_int : '';
             const links = [];
             const m1 = decodeURIComponent('%E2%9A%A0%EF%B8%8F%D8%A7%DB%8C%D9%86%20%D9%BE%D9%86%D9%84%20%D8%B1%D8%A7%DB%8C%DA%AF%D8%A7%D9%86%20%D9%88%20%D8%BA%DB%8C%D8%B1%20%D9%82%D8%A7%D8%A8%D9%84%20%D9%81%D8%B1%D9%88%D8%B4%20%D8%A7%D8%B3%D8%AA%E2%9A%A0%EF%B8%8F');
-            const m2 = decodeURIComponent('%E2%99%A8%EF%B8%8F%20%40ZEUS_PANEL_BOT%20%D8%B3%D8%A7%D8%AE%D8%AA%20%D8%B1%D8%A7%DB%8C%DA%AF%D8%A7%D9%86%20%E2%99%A8%EF%B8%8F');
-            links.push('vle' + 'ss://' + (user.uuid || '') + '@0.0.0.0:1?encryption=none&security=none&type=ws&host=' + host + '&path=%2FZEUS_PANEL_BOT#' + encodeURIComponent(m1));
-            links.push('vle' + 'ss://' + (user.uuid || '') + '@0.0.0.0:1?encryption=none&security=none&type=ws&host=' + host + '&path=%2FZEUS_PANEL_BOT#' + encodeURIComponent(m2));
+            const m2 = decodeURIComponent('%E2%99%A8%EF%B8%8F%20%40PANEL_ZEUS%20%D8%B3%D8%A7%D8%AE%D8%AA%20%D8%B1%D8%A7%DB%8C%DA%AF%D8%A7%D9%86%20%E2%99%A8%EF%B8%8F');
+            links.push('vle' + 'ss://' + (user.uuid || '') + '@0.0.0.0:1?encryption=none&security=none&type=ws&host=' + host + '&path=%2FPANEL_ZEUS#' + encodeURIComponent(m1));
+            links.push('vle' + 'ss://' + (user.uuid || '') + '@0.0.0.0:1?encryption=none&security=none&type=ws&host=' + host + '&path=%2FPANEL_ZEUS#' + encodeURIComponent(m2));
             ips.forEach((ip) => {
                 ports.forEach((portStr) => {
                     const isTlsPort = tlsPorts.includes(portStr);
                     const tlsVal = isTlsPort ? 'tls' : 'none';
                     const remark = user.username + ' | \u200E' + ip + ' | \u200E' + portStr;
-                    links.push('vle' + 'ss://' + (user.uuid || '') + '@' + ip + ':' + portStr + '?path=%2FZEUS_PANEL_BOT&security=' + tlsVal + '&encryption=none&insecure=0&host=' + host + '&fp=' + fp + '&type=ws&allowInsecure=0&sni=' + host + userFrag + '#' + encodeURIComponent(remark));
+                    links.push('vle' + 'ss://' + (user.uuid || '') + '@' + ip + ':' + portStr + '?path=%2FPANEL_ZEUS&security=' + tlsVal + '&encryption=none&insecure=0&host=' + host + '&fp=' + fp + '&type=ws&allowInsecure=0&sni=' + host + userFrag + '#' + encodeURIComponent(remark));
                 });
             });
             return links.join('\\n');
@@ -4884,29 +4434,12 @@ function getVlessLink(username) {
             });
         }
 		function toggleQrModal(show, text) {
-            const modal = document.getElementById('qr-modal');
-            const card = document.getElementById('qr-modal-card');
             const container = document.getElementById('qrcode-container');
             if (show) {
                 container.innerHTML = '';
-                new QRCode(container, {
-                    text: text,
-                    width: 200,
-                    height: 200,
-                    colorDark: "#000000",
-                    colorLight: "#ffffff",
-                    correctLevel: QRCode.CorrectLevel.M
-                });
-                modal.classList.remove('opacity-0', 'pointer-events-none');
-                modal.classList.add('opacity-100', 'pointer-events-auto');
-                card.classList.remove('opacity-0', 'scale-95');
-                card.classList.add('opacity-100', 'scale-100');
-            } else {
-                modal.classList.remove('opacity-100', 'pointer-events-auto');
-                modal.classList.add('opacity-0', 'pointer-events-none');
-                card.classList.remove('opacity-100', 'scale-100');
-                card.classList.add('opacity-0', 'scale-95');
+                new QRCode(container, { text: text, width: 200, height: 200, colorDark: "#000000", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
             }
+            setModalState('qr-modal', show);
         }
         function showSubQr(encodedUsername) {
             const username = decodeURIComponent(encodedUsername);
@@ -4923,12 +4456,12 @@ function getVlessLink(username) {
         }
         function copyConfig(encodedUsername) {
             const username = decodeURIComponent(encodedUsername);
-            const link = getVlessLink(username);
+            const link = getvIeesLink(username);
             if (!link) return;
             navigator.clipboard.writeText(link).then(() => {
-                alert('✅ کانفیگ VLESS با موفقیت کپی شد!');
+                alert('✅ کـانفـیگ vIees با موفقیت کپی شد!');
             }).catch(() => {
-                alert('خطا در کپی کردن کانفیگ!');
+                alert('خطا در کپی کردن کـانفـیگ!');
             });
         }
 function editUser(encodedUsername) {
@@ -5008,6 +4541,7 @@ function editUser(encodedUsername) {
                     const response = await fetch('/api/users/' + encodeURIComponent(username), { method: 'DELETE' });
                     if (response.ok) {
                         alert('✅ کاربر با موفقیت حذف شد.');
+                        window.selectedUsernames.delete(username);
                         await loadUsers(true);
                     } else {
                         const errData = await response.json();
@@ -5550,7 +5084,7 @@ window.filterLocations = function() {
                 window.location.reload();
             }
         }
-const CURRENT_VERSION = '1.8.3';
+const CURRENT_VERSION = '1.8.8';
 const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
 		async function checkForUpdates(isManual = false) {
             try {
@@ -5585,20 +5119,8 @@ const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
             }
         }
         function toggleTokenModal(show) {
-            const modal = document.getElementById('token-modal');
-            const card = document.getElementById('token-modal-card');
-            if (show) {
-                modal.classList.remove('opacity-0', 'pointer-events-none');
-                modal.classList.add('opacity-100', 'pointer-events-auto');
-                card.classList.remove('opacity-0', 'scale-95');
-                card.classList.add('opacity-100', 'scale-100');
-            } else {
-                modal.classList.remove('opacity-100', 'pointer-events-auto');
-                modal.classList.add('opacity-0', 'pointer-events-none');
-                card.classList.remove('opacity-100', 'scale-100');
-                card.classList.add('opacity-0', 'scale-95');
-                document.getElementById('update-token-input').value = '';
-            }
+            setModalState('token-modal', show);
+            if (!show) document.getElementById('update-token-input').value = '';
         }
         function submitTokenForUpdate() {
             const token = document.getElementById('update-token-input').value.trim();
@@ -5610,41 +5132,7 @@ const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
             applyUpdate(token);
         }
         async function applyUpdate(token = null) {
-            if (!token) toggleUpdateModal(false);
-            const btn = document.getElementById('update-toggle');
-            btn.disabled = true;
-            if (!token) alert('در حال دریافت و اعمال آپدیت... لطفاً چند ثانیه صبر کنید.');
-            try {
-                const reqBody = token ? JSON.stringify({ cf_token: token }) : "{}";
-                const res = await fetch('/api/update-panel', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: reqBody
-                });
-                const data = await res.json();
-                if (res.status === 400 && data.error === "TOKEN_REQUIRED") {
-                    toggleTokenModal(true);
-                    btn.disabled = false;
-                    return;
-                }
-                if (res.ok && data.success) {
-                    const successModal = document.getElementById('update-success-modal');
-                    const successCard = successModal.querySelector('div');
-                    successModal.classList.remove('opacity-0', 'pointer-events-none');
-                    successModal.classList.add('opacity-100', 'pointer-events-auto');
-                    successCard.classList.remove('opacity-0', 'scale-95');
-                    successCard.classList.add('opacity-100', 'scale-100');
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 10000);
-                } else {
-                    alert('خطا در بروزرسانی. لطفاً با استفاده از دکمه "آپدیت دستی" اقدام کنید.');
-                    btn.disabled = false;
-                }
-            } catch (err) {
-                alert('خطا در ارتباط با سرور. لطفاً از گزینه آپدیت دستی استفاده کنید.');
-                btn.disabled = false;
-            }
+            await handleCoreAction('update', token);
         }
 let cachedIpsData = {};
 async function fetchIpsList() {
@@ -5687,18 +5175,8 @@ function populateIpSelect() {
     });
 }
 function toggleIpSelectorModal(show) {
-    const modal = document.getElementById('ip-selector-modal');
-    const card = modal.querySelector('div');
-    if (show) {
-        modal.classList.remove('opacity-0', 'pointer-events-none');
-        modal.classList.add('opacity-100', 'pointer-events-auto');
-        card.classList.remove('opacity-0', 'scale-95');
-        card.classList.add('opacity-100', 'scale-100');
-    } else {
-        modal.classList.remove('opacity-100', 'pointer-events-auto');
-        modal.classList.add('opacity-0', 'pointer-events-none');
-        card.classList.remove('opacity-100', 'scale-100');
-        card.classList.add('opacity-0', 'scale-95');
+    setModalState('ip-selector-modal', show);
+    if (!show) {
 		const rotateToggle = document.getElementById('input-auto-rotate-ip-toggle');
 		if (rotateToggle) rotateToggle.checked = false;
 		const rotateTime = document.getElementById('input-auto-rotate-ip-time');
@@ -5764,14 +5242,6 @@ document.addEventListener('DOMContentLoaded', () => {
             freeModal.classList.add('opacity-100', 'pointer-events-auto');
             freeCard.classList.remove('opacity-0', 'scale-95');
             freeCard.classList.add('opacity-100', 'scale-100');
-            if (localStorage.getItem('zeus_path_warned_' + CURRENT_VERSION) !== 'true') {
-                const modal = document.getElementById('path-warning-modal');
-                const card = modal.querySelector('div');
-                modal.classList.remove('opacity-0', 'pointer-events-none');
-                modal.classList.add('opacity-100', 'pointer-events-auto');
-                card.classList.remove('opacity-0', 'scale-95');
-                card.classList.add('opacity-100', 'scale-100');
-            }			
             const versionBadge = document.getElementById('panel-version');
             if (versionBadge) versionBadge.innerText = 'v' + CURRENT_VERSION;
             renderPortCheckboxes();
@@ -5812,8 +5282,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (e.target.id === 'update-modal') toggleUpdateModal(false);
                 if (e.target.id === 'token-modal') toggleTokenModal(false);
                 if (e.target.id === 'qr-modal') toggleQrModal(false);
-                if (e.target.id === 'bulk-edit-modal') toggleBulkEditModal(false);
-                if (e.target.id === 'path-warning-modal') closePathWarning();
                 if (e.target.id === 'usage-warning-modal') closeUsageWarning();
                 if (e.target.id === 'free-panel-warning-modal') closeFreePanelWarning();
                 if (e.target.id === 'global-message-modal') {
@@ -5827,21 +5295,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 let cachedProxyCountries = null;
-function toggleProxySelectorModal(show) {
-    const modal = document.getElementById('proxy-selector-modal');
-    const card = modal.querySelector('div');
-    if (show) {
-        modal.classList.remove('opacity-0', 'pointer-events-none');
-        modal.classList.add('opacity-100', 'pointer-events-auto');
-        card.classList.remove('opacity-0', 'scale-95');
-        card.classList.add('opacity-100', 'scale-100');
-    } else {
-        modal.classList.remove('opacity-100', 'pointer-events-auto');
-        modal.classList.add('opacity-0', 'pointer-events-none');
-        card.classList.remove('opacity-100', 'scale-100');
-        card.classList.add('opacity-0', 'scale-95');
-    }
-}
+function toggleProxySelectorModal(show) { setModalState('proxy-selector-modal', show); }
 		async function loadVipCountries() {
 			const select = document.getElementById('vip-country-select');
 			const btn = document.getElementById('vip-fetch-btn');
@@ -5890,6 +5344,7 @@ function toggleProxySelectorModal(show) {
 					}
 					toggleProxySelectorModal(false);
 					showToast('✅ پروکسی اختصاصی با موفقیت اعمال شد.');
+                    testUserSocksProxy();
 				} else {
 					alert('فایل پروکسی این کشور خالی است.');
 				}
@@ -6082,6 +5537,7 @@ async function fetchAndLoadProxy() {
                 document.getElementById('test-user-proxy-result').innerText = '';
                 toggleProxySelectorModal(false);
                 showToast('پروکسی با بهترین امتیاز لود شد.');
+                testUserSocksProxy();
             } else {
                 alert('هیچ پروکسی سالمی (حتی با یک پینگ موفق) یافت نشد.');
             }
@@ -6098,18 +5554,8 @@ async function fetchAndLoadProxy() {
 }
 const WORKER_DONATE_URL = 'https://noisy-meadow-a466.ir-netlify.workers.dev/';
 		function toggleDonateModal(show) {
-			const modal = document.getElementById('donate-modal');
-			const card = document.getElementById('donate-modal-card');
-			if (show) {
-				modal.classList.remove('opacity-0', 'pointer-events-none');
-				modal.classList.add('opacity-100', 'pointer-events-auto');
-				card.classList.remove('opacity-0', 'scale-95');
-				card.classList.add('opacity-100', 'scale-100');
-			} else {
-				modal.classList.remove('opacity-100', 'pointer-events-auto');
-				modal.classList.add('opacity-0', 'pointer-events-none');
-				card.classList.remove('opacity-100', 'scale-100');
-				card.classList.add('opacity-0', 'scale-95');
+			setModalState('donate-modal', show);
+			if (!show) {
 				document.getElementById('donate-proxy-input').value = '';
 				const resultSpan = document.getElementById('donate-result');
 				if (resultSpan) {
@@ -6202,20 +5648,7 @@ window.addEventListener('click', (e) => {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>وضعیت اشتراک کاربر</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    fontFamily: { sans: ['Vazirmatn', 'sans-serif'] },
-                    colors: { amoled: { bg: '#000000', card: '#080b0f', input: '#0d1117', border: '#1c2330' } }
-                }
-            }
-        }
-    </script>
+    ${COMMON_HEAD}
     <style>
         body { font-family: 'Vazirmatn', sans-serif; }
         .glass {
@@ -6314,7 +5747,7 @@ window.addEventListener('click', (e) => {
         <div class="border-t border-gray-100 dark:border-zinc-800 pt-6 relative z-10">
             <h2 class="text-sm font-bold mb-4 flex items-center gap-2">
                 <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                دریافت کانفیگ و اشتراک‌ها
+                دریافت کـانفـیگ و اشتراک‌ها
             </h2>
             <div class="space-y-3">
                 <button onclick="copyTextSub()" class="w-full flex justify-between items-center px-4 py-3 bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border hover:border-indigo-500 dark:hover:border-indigo-500 rounded-xl text-xs font-medium transition shadow-sm">
@@ -6325,8 +5758,8 @@ window.addEventListener('click', (e) => {
                     <span class="flex items-center gap-2">📱 دریافت کیوآر کد ساب</span>
                     <span class="text-amber-500">نمایش</span>
                 </button>
-                <button onclick="copyVlessConfig()" class="w-full flex justify-between items-center px-4 py-3 bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border hover:border-blue-500 dark:hover:border-blue-500 rounded-xl text-xs font-medium transition shadow-sm">
-                    <span class="flex items-center gap-2">🚀 کپی کانفیگ VLESS (مستقیم)</span>
+                <button onclick="copyvIeesConfig()" class="w-full flex justify-between items-center px-4 py-3 bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border hover:border-blue-500 dark:hover:border-blue-500 rounded-xl text-xs font-medium transition shadow-sm">
+                    <span class="flex items-center gap-2">🚀 کپی کـانفـیگ vIees (مستقیم)</span>
                     <span class="text-blue-500">کپی</span>
                 </button>
             </div>
@@ -6353,15 +5786,15 @@ window.addEventListener('click', (e) => {
             </svg>
             گیت‌هاب
         </a>
-        <a href="https://t.me/ZEUS_PANEL_BOT" target="_blank" class="flex items-center gap-2 px-4 py-2 bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-full shadow-sm hover:shadow-md transition text-sm font-bold text-gray-700 dark:text-zinc-300 hover:text-sky-500 dark:hover:text-sky-400 group">
+        <a href="https://t.me/PANEL_ZEUS" target="_blank" class="flex items-center gap-2 px-4 py-2 bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-full shadow-sm hover:shadow-md transition text-sm font-bold text-gray-700 dark:text-zinc-300 hover:text-sky-500 dark:hover:text-sky-400 group">
             <svg class="w-5 h-5 text-sky-500 group-hover:scale-110 transition" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.94-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.37.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .24z"/>
             </svg>
-            ZEUS_PANEL_BOT@
+            PANEL_ZEUS@
         </a>
     </div>
     <div class="flex flex-wrap items-center gap-3 sm:gap-4 justify-center">
-        <a href="https://zeus-install.ir-netlify.workers.dev/" target="_blank" class="flex items-center gap-2 px-4 py-2 bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-full shadow-sm hover:shadow-md transition text-sm font-bold text-amber-600 dark:text-amber-400 hover:text-amber-500 dark:hover:text-amber-300 group">
+        <a href="https://zeus-panel.ir-netlify.workers.dev/" target="_blank" class="flex items-center gap-2 px-4 py-2 bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-full shadow-sm hover:shadow-md transition text-sm font-bold text-amber-600 dark:text-amber-400 hover:text-amber-500 dark:hover:text-amber-300 group">
             <svg class="w-5 h-5 text-amber-500 dark:text-amber-400 group-hover:scale-110 transition" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
             </svg>
@@ -6375,38 +5808,14 @@ window.addEventListener('click', (e) => {
         </a>
     </div>
 </div>
-<div id="toast-container" class="fixed top-5 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 pointer-events-none"></div>
+${COMMON_TOAST_HTML}
     <script>
         /* {{USER_DATA_PLACEHOLDER}} */
-        function showToast(message, type = 'success') {
-            const container = document.getElementById('toast-container');
-            const toast = document.createElement('div');
-            const colors = type === 'error' 
-                ? 'bg-red-50 dark:bg-red-900/40 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400' 
-                : 'bg-green-50 dark:bg-green-900/40 border-green-200 dark:border-green-800 text-green-700 dark:text-green-500';
-            toast.className = 'px-4 py-3 border rounded-xl shadow-lg font-bold text-sm transform transition-all duration-300 -translate-y-full opacity-0 ' + colors;
-            toast.innerText = message;
-            container.appendChild(toast);
-            requestAnimationFrame(() => {
-                toast.classList.remove('-translate-y-full', 'opacity-0');
-            });
-            setTimeout(() => {
-                toast.classList.add('-translate-y-full', 'opacity-0');
-                setTimeout(() => toast.remove(), 300);
-            }, 3000);
-        }
-        window.alert = function(message) {
-            const msgStr = message ? message.toString() : '';
-            if (msgStr.includes('خطا') || msgStr.includes('⚠️') || msgStr.includes('❌')) {
-                showToast(msgStr, 'error');
-            } else {
-                showToast(msgStr, 'success');
-            }
-        };
+        ${COMMON_TOAST_JS}
         function getHost() {
             return window.location.host;
         }
-        function getVlessLink() {
+        function getvIeesLink() {
             const u = window.statusUser;
             const host = getHost();
             var ips = [host];
@@ -6423,13 +5832,13 @@ window.addEventListener('click', (e) => {
                     var isTlsPort = ['443', '2053', '2083', '2087', '2096', '8443'].includes(portStr);
                     var tlsVal = isTlsPort ? 'tls' : 'none';
                     var remark = ips.length > 1 ? (u.username + '-' + (ipIndex + 1) + '-' + portStr) : (u.username + '-' + portStr);
-                    links.push('vle' + 'ss://' + (u.uuid || '') + '@' + ip + ':' + portStr + '?path=%2FZEUS_PANEL_BOT&security=' + tlsVal + '&encryption=none&insecure=0&host=' + host + '&fp=' + fp + '&type=ws&allowInsecure=0&sni=' + host + userFrag + '#' + encodeURIComponent(remark));
+                    links.push('vle' + 'ss://' + (u.uuid || '') + '@' + ip + ':' + portStr + '?path=%2FPANEL_ZEUS&security=' + tlsVal + '&encryption=none&insecure=0&host=' + host + '&fp=' + fp + '&type=ws&allowInsecure=0&sni=' + host + userFrag + '#' + encodeURIComponent(remark));
                 });
             });
             return links.join('\\n');
         }
-        function copyVlessConfig() {
-            navigator.clipboard.writeText(getVlessLink()).then(() => alert('✅ کانفیگ VLESS با موفقیت کپی شد!'));
+        function copyvIeesConfig() {
+            navigator.clipboard.writeText(getvIeesLink()).then(() => alert('✅ کـانفـیگ vIees با موفقیت کپی شد!'));
         }
         function copyTextSub() {
             const link = window.location.protocol + '//' + getHost() + '/sub/' + encodeURIComponent(window.statusUser.username);
@@ -6598,15 +6007,11 @@ if (u.user_proxy_iata) {
                 statusCard.className = 'mb-6 rounded-2xl p-4 text-center border font-bold relative z-10 bg-red-500/10 border-red-500/30 text-red-500 shadow-md shadow-red-500/5';
                 statusCard.style.boxShadow = 'inset 0 0 12px rgba(239, 68, 68, 0.1)';
                 statusText.innerText = '❌ وضعیت اشتراک: غیرفعال / مسدود دستی';
-            } else if (isVolumeExpired) {
+            } else if (isVolumeExpired || isReqExpired || isTimeExpired) {
                 statusCard.className = 'mb-6 rounded-2xl p-4 text-center border font-bold relative z-10 bg-yellow-500/10 border-yellow-500/30 text-yellow-500 shadow-md shadow-yellow-500/5';
-                statusText.innerText = '⚠️ وضعیت اشتراک: تمام شدن حجم مجاز';
-            } else if (isReqExpired) {
-                statusCard.className = 'mb-6 rounded-2xl p-4 text-center border font-bold relative z-10 bg-yellow-500/10 border-yellow-500/30 text-yellow-500 shadow-md shadow-yellow-500/5';
-                statusText.innerText = '📈 وضعیت اشتراک: تمام شدن ریکوئست مجاز';
-            } else if (isTimeExpired) {
-                statusCard.className = 'mb-6 rounded-2xl p-4 text-center border font-bold relative z-10 bg-yellow-500/10 border-yellow-500/30 text-yellow-500 shadow-md shadow-yellow-500/5';
-                statusText.innerText = '⏳ وضعیت اشتراک: منقضی شده (پایان زمان اعتبار)';
+                if (isVolumeExpired) statusText.innerText = '⚠️ وضعیت اشتراک: تمام شدن حجم مجاز';
+                else if (isReqExpired) statusText.innerText = '📈 وضعیت اشتراک: تمام شدن ریکوئست مجاز';
+                else if (isTimeExpired) statusText.innerText = '⏳ وضعیت اشتراک: منقضی شده (پایان زمان اعتبار)';
             } else {
                 statusCard.className = 'mb-6 rounded-2xl p-4 text-center border font-bold relative z-10 bg-green-600/10 border-green-600/30 text-green-600 shadow-md shadow-green-600/5';
                 statusText.innerText = '✅ وضعیت اشتراک: فعال و متصل';

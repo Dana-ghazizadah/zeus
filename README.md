@@ -1,6 +1,6 @@
 
 
-<img  src="https://raw.githubusercontent.com/IR-NETLIFY/zeus/refs/heads/main/photos/dark.png"  width="100%"  alt="Zeus Panel Dark Mode"  style="border-radius: 12px; margin-bottom: 15px;">
+<img  src="https://raw.githubusercontent.com/IR-NETLIFY/zeus/refs/heads/main/photos/dark2.png"  width="100%"  alt="Zeus Panel Dark Mode"  style="border-radius: 12px; margin-bottom: 15px;">
 
   
 
@@ -50,7 +50,7 @@
 
 <a href="https://github.com/IR-NETLIFY/zeus">
 
-<img  src="https://img.shields.io/badge/Version-1.8.2-0052CC?style=for-the-badge&logo=semver&logoColor=white"  alt="Version">
+<img  src="https://img.shields.io/badge/Version-1.8.5-0052CC?style=for-the-badge&logo=semver&logoColor=white"  alt="Version">
 
 </a>
 
@@ -158,7 +158,7 @@
 
   <div  align="center">
 
-<a  href="https://zeus-install.ir-netlify.workers.dev/"  target="_blank">
+<a  href="https://zeus-panel.ir-netlify.workers.dev/"  target="_blank">
 
 <img src="https://img.shields.io/badge/Launch_Zeus_Panel-Deployer_Site-F38020?style=for-the-badge&logo=cloudflare&logoColor=white" alt="Deploy Zeus" height="40">
 
@@ -168,7 +168,7 @@
 
 ### 🌐 روش دوم: نصب از طریق سایت Deployer
 
-1. 🌐 وارد **[سایت نصب‌کننده](https://zeus-install.ir-netlify.workers.dev/)** شوید.
+1. 🌐 وارد **[سایت نصب‌کننده](https://zeus-panel.ir-netlify.workers.dev/)** شوید.
 
 2. 🟧 بر روی دکمه نارنجی‌رنگ **«دریافت توکن»** کلیک کنید تا به حساب کلودفلر خود هدایت شوید.
 
@@ -195,21 +195,15 @@
 
   
 
-<a  href="https://www.star-history.com/?repos=IR-NETLIFY%2Fzeus&type=timeline&legend=top-left">
 
-<picture>
 
-<source  media="(prefers-color-scheme: dark)"  srcset="https://api.star-history.com/chart?repos=IR-NETLIFY/zeus&type=timeline&theme=dark&legend=top-left&sealed_token=PfEg9mUSduw6OhRLK6oblbehsnWLswyNNhXclsnk-nmqeLsLvDf_J1g9v8jOeBkhHT7-mePG1aUNoYtBcR-Q5_EnaM1qxQnf5oIpVWIz5su_whOA2N_WAQ"  />
-
-<source  media="(prefers-color-scheme: light)"  srcset="https://api.star-history.com/chart?repos=IR-NETLIFY/zeus&type=timeline&legend=top-left&sealed_token=PfEg9mUSduw6OhRLK6oblbehsnWLswyNNhXclsnk-nmqeLsLvDf_J1g9v8jOeBkhHT7-mePG1aUNoYtBcR-Q5_EnaM1qxQnf5oIpVWIz5su_whOA2N_WAQ"  />
-
-<img  alt="Star History Chart"  src="https://api.star-history.com/chart?repos=IR-NETLIFY/zeus&type=timeline&legend=top-left&sealed_token=PfEg9mUSduw6OhRLK6oblbehsnWLswyNNhXclsnk-nmqeLsLvDf_J1g9v8jOeBkhHT7-mePG1aUNoYtBcR-Q5_EnaM1qxQnf5oIpVWIz5su_whOA2N_WAQ"  />
-
-</picture>
-
+<a href="https://www.star-history.com/?repos=IR-NETLIFY%2Fzeus&type=timeline&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=IR-NETLIFY/zeus&type=timeline&theme=dark&legend=bottom-right&sealed_token=86D7HqKpeYWTRN01SwL3e9z64VozJSl7ZCRAqLfQTRvc8BUcdow2Do1Nccam2oFsJ_QlVHcQ4rCFkdpVm5boSUkMGfhL8OC7uYNe-aXPKsoARy-_yUD5HA" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=IR-NETLIFY/zeus&type=timeline&legend=bottom-right&sealed_token=86D7HqKpeYWTRN01SwL3e9z64VozJSl7ZCRAqLfQTRvc8BUcdow2Do1Nccam2oFsJ_QlVHcQ4rCFkdpVm5boSUkMGfhL8OC7uYNe-aXPKsoARy-_yUD5HA" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=IR-NETLIFY/zeus&type=timeline&legend=bottom-right&sealed_token=86D7HqKpeYWTRN01SwL3e9z64VozJSl7ZCRAqLfQTRvc8BUcdow2Do1Nccam2oFsJ_QlVHcQ4rCFkdpVm5boSUkMGfhL8OC7uYNe-aXPKsoARy-_yUD5HA" />
+ </picture>
 </a>
-
-  
 
 ---
 
