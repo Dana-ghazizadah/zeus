@@ -3,6 +3,9 @@
 <img  src="https://raw.githubusercontent.com/IR-NETLIFY/zeus/refs/heads/main/photos/dark2.png"  width="100%"  alt="Zeus Panel Dark Mode"  style="border-radius: 12px; margin-bottom: 15px;">
 
   
+<img  src="https://raw.githubusercontent.com/IR-NETLIFY/zeus/refs/heads/main/photos/add.png"  width="100%"  alt="Zeus Panel Dark Mode"  style="border-radius: 12px; margin-bottom: 15px;">
+
+  
 
 <table  width="100%">
 
@@ -26,7 +29,7 @@
 
 <td width="50%" valign="middle" align="center">
 
-<img  src="https://raw.githubusercontent.com/IR-NETLIFY/zeus/refs/heads/main/photos/add.png"  width="100%"  alt="Zeus Panel Status"  style="border-radius: 12px;">
+<img  src="https://raw.githubusercontent.com/IR-NETLIFY/zeus/refs/heads/main/photos/bot.jpg"  width="100%"  alt="Zeus Panel Status"  style="border-radius: 12px;">
 
 </td>
 
@@ -50,7 +53,7 @@
 
 <a href="https://github.com/IR-NETLIFY/zeus">
 
-<img  src="https://img.shields.io/badge/Version-1.8.5-0052CC?style=for-the-badge&logo=semver&logoColor=white"  alt="Version">
+<img  src="https://img.shields.io/badge/Version-1.8.9-0052CC?style=for-the-badge&logo=semver&logoColor=white"  alt="Version">
 
 </a>
 
