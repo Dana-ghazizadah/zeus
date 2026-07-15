@@ -1,4 +1,11 @@
+<div align="center">
 
+# 🟢 مشکل بن شدن پنل ها رفع شد 🟢
+
+## 🔶 یک اکانت فرعی کلودفلر بسازید (جیمیل فیک نزنید)
+## 🔷 با ربات تلگرام یک پنل جدید بسازید (آموزش پایین هست)
+
+</div>
 
 <img  src="https://raw.githubusercontent.com/IR-NETLIFY/zeus/refs/heads/main/photos/dark2.png"  width="100%"  alt="Zeus Panel Dark Mode"  style="border-radius: 12px; margin-bottom: 15px;">
 
@@ -53,7 +60,7 @@
 
 <a href="https://github.com/IR-NETLIFY/zeus">
 
-<img  src="https://img.shields.io/badge/Version-1.8.10-0052CC?style=for-the-badge&logo=semver&logoColor=white"  alt="Version">
+<img  src="https://img.shields.io/badge/Version-1.8.13-0052CC?style=for-the-badge&logo=semver&logoColor=white"  alt="Version">
 
 </a>
 
@@ -228,7 +235,7 @@
 
 <p  align="center"><a  href="https://donatonion.ir-netlify.workers.dev"><b>https://donatonion.ir-netlify.workers.dev</b></a></p>
 
-<p  align="center"><a  href="https://daramet.com/ir_netlify"><b>https://daramet.com/ir_netlify</b></a></p>
+<p  align="center"><a  href="https://daramet.com/ir_netlify"><b>https://daramet.com/ir_netlify</b></a> ریالی </p>
 
 <p  align="center"> از حمایت شما برای زنده نگه‌داشتن و توسعه این پروژه منبع‌باز متشکریم 🙏</p>
 
